@@ -36,7 +36,9 @@ export class TemplateService {
 
       if (response.ok) {
         const data = await response.json();
-        this.templates = data.templates || [];
+        const templates = data.templates ?? data ?? [];
+        // Normalize to array
+        this.templates = Array.isArray(templates) ? templates as any : [];
         this.isLoaded = true;
         console.log(`Super LoRA Loader: Loaded ${this.templates.length} templates`);
       } else {
@@ -75,10 +77,22 @@ export class TemplateService {
         throw new Error('No valid LoRA configurations to save');
       }
 
-      const template: Omit<LoraTemplate, 'created_at'> = {
+      // Normalize before saving
+      const normalized = validConfigs.map(cfg => ({
+        lora: cfg.lora,
+        enabled: !!cfg.enabled,
+        strength_model: Number(cfg.strength_model ?? 1),
+        strength_clip: Number(cfg.strength_clip ?? cfg.strength_model ?? 1),
+        trigger_word: cfg.trigger_word ?? '',
+        tag: cfg.tag ?? 'General',
+        auto_populated: !!cfg.auto_populated
+      }));
+
+      // Prefer 'lora_configs' for backend, but backend also accepts 'loras'
+      const template: any = {
         name,
         version: '1.0',
-        loras: validConfigs
+        lora_configs: normalized
       };
 
       const response = await fetch('/super_lora/templates', {
@@ -110,17 +124,77 @@ export class TemplateService {
   async loadTemplate(name: string): Promise<LoraConfig[] | null> {
     try {
       const templates = await this.getTemplates();
-      const template = templates.find(t => t.name === name);
+      const template: any = templates.find((t: any) => t && (t.name === name || t.id === name || t.title === name || t === name));
       
-      if (!template) {
-        console.warn(`Super LoRA Loader: Template "${name}" not found`);
+      const extractList = (tpl: any): any[] | null => {
+        if (!tpl) return null;
+        if (Array.isArray(tpl.loras)) return tpl.loras;
+        if (Array.isArray(tpl.items)) return tpl.items;
+        if (tpl.template) return extractList(tpl.template);
+        if (typeof tpl === 'string') {
+          // Might be a JSON string
+          try { const parsed = JSON.parse(tpl); return extractList(parsed); } catch {}
+        }
         return null;
+      };
+
+      // Helper to fetch details by name
+      const fetchByName = async (): Promise<LoraConfig[] | null> => {
+        const tryParse = (data: any): LoraConfig[] | null => {
+          const list = extractList(data);
+          if (!list) return null;
+          const valid = list.filter((cfg: any) => this.validateLoraConfig(cfg));
+          return valid;
+        };
+        try {
+          // Attempt query param form
+          let resp = await fetch(`/super_lora/templates?name=${encodeURIComponent(name)}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            const out = tryParse(data);
+            if (out) return out;
+          }
+        } catch {}
+        try {
+          // Attempt REST-style path form
+          const resp2 = await fetch(`/super_lora/templates/${encodeURIComponent(name)}`);
+          if (resp2.ok) {
+            const data2 = await resp2.json();
+            const out2 = tryParse(data2);
+            if (out2) return out2;
+          }
+        } catch {}
+        return null;
+      };
+
+      if (!template) {
+        console.warn(`Super LoRA Loader: Template "${name}" not found in cache, trying GET by name`);
+        return await fetchByName();
       }
 
-      // Validate the template's LoRA configs
-      const validConfigs = template.loras.filter(config => this.validateLoraConfig(config));
-      
-      if (validConfigs.length !== template.loras.length) {
+      let list: any[] | null = extractList(template);
+      if (!list) {
+        const fetched = await fetchByName();
+        if (!fetched) {
+          console.warn(`Super LoRA Loader: Template "${name}" has no loras/items array`);
+        }
+        return fetched;
+      }
+
+      const normalize = (cfg: any) => ({
+        lora: cfg.lora ?? cfg.file ?? cfg.name ?? '',
+        enabled: (cfg.enabled !== undefined) ? !!cfg.enabled : (cfg.on === undefined ? true : !!cfg.on),
+        strength_model: (cfg.strength_model !== undefined) ? Number(cfg.strength_model) : Number(cfg.strength ?? cfg.value ?? 1),
+        strength_clip: (cfg.strength_clip !== undefined) ? Number(cfg.strength_clip) : Number(cfg.strengthTwo ?? cfg.clip_strength ?? cfg.strength_model ?? cfg.strength ?? 1),
+        trigger_word: cfg.trigger_word ?? cfg.triggerWord ?? cfg.trigger ?? '',
+        tag: cfg.tag ?? 'General',
+        auto_populated: cfg.auto_populated ?? cfg._autoPopulatedTriggerWord ?? false
+      });
+
+      const normalized = list.map(normalize);
+      const validConfigs = normalized.filter(config => this.validateLoraConfig(config));
+       
+      if (validConfigs.length !== list.length) {
         console.warn(`Super LoRA Loader: Some LoRA configs in template "${name}" are invalid`);
       }
 
@@ -137,17 +211,46 @@ export class TemplateService {
    */
   async deleteTemplate(name: string): Promise<boolean> {
     try {
-      const response = await fetch('/super_lora/templates', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name })
+      // Try RESTful DELETE by name first
+      let response = await fetch(`/super_lora/templates/${encodeURIComponent(name)}`, {
+        method: 'DELETE'
       });
 
+      if (!response.ok) {
+        // Fallback 1: DELETE with JSON body (older clients)
+        response = await fetch('/super_lora/templates', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+      }
+
+      if (!response.ok && response.status === 405) {
+        // Fallback 2: POST to a delete endpoint
+        response = await fetch('/super_lora/templates/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+      }
+
+      if (!response.ok) {
+        // Fallback 3: POST action flag
+        response = await fetch('/super_lora/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', name })
+        });
+      }
+
       if (response.ok) {
-        // Remove from local cache
-        this.templates = this.templates.filter(t => t.name !== name);
+        // Verify by reloading list
+        await this.loadTemplates();
+        const stillExists = (this.templates || []).some((t: any) => (t && t.name) ? t.name === name : t === name);
+        if (stillExists) {
+          console.warn(`Super LoRA Loader: Server responded OK but template still present: ${name}`);
+          return false;
+        }
         console.log(`Super LoRA Loader: Template "${name}" deleted successfully`);
         return true;
       } else {
@@ -173,7 +276,8 @@ export class TemplateService {
    */
   async getTemplateNames(): Promise<string[]> {
     const templates = await this.getTemplates();
-    return templates.map(t => t.name).sort();
+    // Accept arrays of names or arrays of objects
+    return templates.map((t: any) => (t && t.name) ? t.name : String(t)).sort();
   }
 
   /**
@@ -239,6 +343,43 @@ export class TemplateService {
       return await this.saveTemplate(template.name, template.loras);
     } catch (error) {
       console.error('Super LoRA Loader: Failed to import template:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Rename an existing template
+   */
+  async renameTemplate(oldName: string, newName: string): Promise<boolean> {
+    try {
+      const src = (oldName || '').trim();
+      const dst = (newName || '').trim();
+      if (!src || !dst) return false;
+      if (src === dst) return true;
+
+      // Ensure destination does not already exist
+      if (await this.templateExists(dst)) {
+        throw new Error(`Template "${dst}" already exists`);
+      }
+
+      // Load source template configs
+      const configs = await this.loadTemplate(src);
+      if (!configs || configs.length === 0) {
+        throw new Error(`Template "${src}" not found or empty`);
+      }
+
+      // Save under new name
+      const saved = await this.saveTemplate(dst, configs);
+      if (!saved) return false;
+
+      // Delete old
+      await this.deleteTemplate(src);
+
+      // Refresh list
+      await this.loadTemplates();
+      return true;
+    } catch (error) {
+      console.error('Super LoRA Loader: Failed to rename template:', error);
       return false;
     }
   }

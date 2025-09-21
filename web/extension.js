@@ -211,7 +211,8 @@ class TemplateService {
       });
       if (response.ok) {
         const data = await response.json();
-        this.templates = data.templates || [];
+        const templates = data.templates ?? data ?? [];
+        this.templates = Array.isArray(templates) ? templates : [];
         this.isLoaded = true;
         console.log(`Super LoRA Loader: Loaded ${this.templates.length} templates`);
       } else {
@@ -245,10 +246,19 @@ class TemplateService {
       if (validConfigs.length === 0) {
         throw new Error("No valid LoRA configurations to save");
       }
+      const normalized = validConfigs.map((cfg) => ({
+        lora: cfg.lora,
+        enabled: !!cfg.enabled,
+        strength_model: Number(cfg.strength_model ?? 1),
+        strength_clip: Number(cfg.strength_clip ?? cfg.strength_model ?? 1),
+        trigger_word: cfg.trigger_word ?? "",
+        tag: cfg.tag ?? "General",
+        auto_populated: !!cfg.auto_populated
+      }));
       const template = {
         name,
         version: "1.0",
-        loras: validConfigs
+        lora_configs: normalized
       };
       const response = await fetch("/super_lora/templates", {
         method: "POST",
@@ -276,13 +286,72 @@ class TemplateService {
   async loadTemplate(name) {
     try {
       const templates = await this.getTemplates();
-      const template = templates.find((t) => t.name === name);
-      if (!template) {
-        console.warn(`Super LoRA Loader: Template "${name}" not found`);
+      const template = templates.find((t) => t && (t.name === name || t.id === name || t.title === name || t === name));
+      const extractList = (tpl) => {
+        if (!tpl) return null;
+        if (Array.isArray(tpl.loras)) return tpl.loras;
+        if (Array.isArray(tpl.items)) return tpl.items;
+        if (tpl.template) return extractList(tpl.template);
+        if (typeof tpl === "string") {
+          try {
+            const parsed = JSON.parse(tpl);
+            return extractList(parsed);
+          } catch {
+          }
+        }
         return null;
+      };
+      const fetchByName = async () => {
+        const tryParse = (data) => {
+          const list2 = extractList(data);
+          if (!list2) return null;
+          const valid = list2.filter((cfg) => this.validateLoraConfig(cfg));
+          return valid;
+        };
+        try {
+          let resp = await fetch(`/super_lora/templates?name=${encodeURIComponent(name)}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            const out = tryParse(data);
+            if (out) return out;
+          }
+        } catch {
+        }
+        try {
+          const resp2 = await fetch(`/super_lora/templates/${encodeURIComponent(name)}`);
+          if (resp2.ok) {
+            const data2 = await resp2.json();
+            const out2 = tryParse(data2);
+            if (out2) return out2;
+          }
+        } catch {
+        }
+        return null;
+      };
+      if (!template) {
+        console.warn(`Super LoRA Loader: Template "${name}" not found in cache, trying GET by name`);
+        return await fetchByName();
       }
-      const validConfigs = template.loras.filter((config) => this.validateLoraConfig(config));
-      if (validConfigs.length !== template.loras.length) {
+      let list = extractList(template);
+      if (!list) {
+        const fetched = await fetchByName();
+        if (!fetched) {
+          console.warn(`Super LoRA Loader: Template "${name}" has no loras/items array`);
+        }
+        return fetched;
+      }
+      const normalize = (cfg) => ({
+        lora: cfg.lora ?? cfg.file ?? cfg.name ?? "",
+        enabled: cfg.enabled !== void 0 ? !!cfg.enabled : cfg.on === void 0 ? true : !!cfg.on,
+        strength_model: cfg.strength_model !== void 0 ? Number(cfg.strength_model) : Number(cfg.strength ?? cfg.value ?? 1),
+        strength_clip: cfg.strength_clip !== void 0 ? Number(cfg.strength_clip) : Number(cfg.strengthTwo ?? cfg.clip_strength ?? cfg.strength_model ?? cfg.strength ?? 1),
+        trigger_word: cfg.trigger_word ?? cfg.triggerWord ?? cfg.trigger ?? "",
+        tag: cfg.tag ?? "General",
+        auto_populated: cfg.auto_populated ?? cfg._autoPopulatedTriggerWord ?? false
+      });
+      const normalized = list.map(normalize);
+      const validConfigs = normalized.filter((config) => this.validateLoraConfig(config));
+      if (validConfigs.length !== list.length) {
         console.warn(`Super LoRA Loader: Some LoRA configs in template "${name}" are invalid`);
       }
       console.log(`Super LoRA Loader: Loaded template "${name}" with ${validConfigs.length} LoRAs`);
@@ -297,15 +366,37 @@ class TemplateService {
    */
   async deleteTemplate(name) {
     try {
-      const response = await fetch("/super_lora/templates", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ name })
+      let response = await fetch(`/super_lora/templates/${encodeURIComponent(name)}`, {
+        method: "DELETE"
       });
+      if (!response.ok) {
+        response = await fetch("/super_lora/templates", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+      }
+      if (!response.ok && response.status === 405) {
+        response = await fetch("/super_lora/templates/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+      }
+      if (!response.ok) {
+        response = await fetch("/super_lora/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", name })
+        });
+      }
       if (response.ok) {
-        this.templates = this.templates.filter((t) => t.name !== name);
+        await this.loadTemplates();
+        const stillExists = (this.templates || []).some((t) => t && t.name ? t.name === name : t === name);
+        if (stillExists) {
+          console.warn(`Super LoRA Loader: Server responded OK but template still present: ${name}`);
+          return false;
+        }
         console.log(`Super LoRA Loader: Template "${name}" deleted successfully`);
         return true;
       } else {
@@ -329,7 +420,7 @@ class TemplateService {
    */
   async getTemplateNames() {
     const templates = await this.getTemplates();
-    return templates.map((t) => t.name).sort();
+    return templates.map((t) => t && t.name ? t.name : String(t)).sort();
   }
   /**
    * Validate a LoRA configuration
@@ -379,6 +470,32 @@ class TemplateService {
       return await this.saveTemplate(template.name, template.loras);
     } catch (error) {
       console.error("Super LoRA Loader: Failed to import template:", error);
+      return false;
+    }
+  }
+  /**
+   * Rename an existing template
+   */
+  async renameTemplate(oldName, newName) {
+    try {
+      const src = (oldName || "").trim();
+      const dst = (newName || "").trim();
+      if (!src || !dst) return false;
+      if (src === dst) return true;
+      if (await this.templateExists(dst)) {
+        throw new Error(`Template "${dst}" already exists`);
+      }
+      const configs = await this.loadTemplate(src);
+      if (!configs || configs.length === 0) {
+        throw new Error(`Template "${src}" not found or empty`);
+      }
+      const saved = await this.saveTemplate(dst, configs);
+      if (!saved) return false;
+      await this.deleteTemplate(src);
+      await this.loadTemplates();
+      return true;
+    } catch (error) {
+      console.error("Super LoRA Loader: Failed to rename template:", error);
       return false;
     }
   }
@@ -675,8 +792,8 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     const buttons = [
       { id: "toggleAll", color: allState ? "#4CAF50" : "#666", text: "Toggle All", shortText: "Toggle", icon: "⏯️", priority: 1 },
       { id: "addLora", color: "#2196F3", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
-      { id: "saveTemplate", color: "#FF9800", text: "Save", shortText: "Save", icon: "💾", priority: 3 },
-      { id: "loadTemplate", color: "#9C27B0", text: "Load", shortText: "Load", icon: "📂", priority: 4 },
+      { id: "saveTemplate", color: "#FF9800", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
+      { id: "loadTemplate", color: "#9C27B0", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
       { id: "settings", color: "#607D8B", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
     ];
     const totalSpacing = buttonSpacing * (buttons.length - 1);
@@ -719,28 +836,33 @@ class SuperLoraTagWidget extends SuperLoraBaseWidget {
     };
     this.value = { type: "SuperLoraTagWidget", tag, collapsed: false };
     this.hitAreas = {
-      toggle: { bounds: [0, 0], onDown: this.onToggleDown },
-      collapse: { bounds: [0, 0], onDown: this.onCollapseDown }
+      toggle: { bounds: [0, 0], onDown: this.onToggleDown, priority: 10 },
+      collapse: { bounds: [0, 0], onDown: this.onCollapseDown, priority: 0 }
     };
   }
   draw(ctx, node, w, posY, height) {
     const margin = 10;
     let posX = margin;
     ctx.save();
-    ctx.fillStyle = "#3a3a3a";
+    ctx.fillStyle = "#2d2d2d";
     ctx.fillRect(0, posY, w, height);
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, posY, w, height);
     const midY = height / 2;
     const lorasInTag = this.getLorasInTag(node);
-    const allEnabled = lorasInTag.every((w2) => w2.value.enabled);
+    const allEnabled = lorasInTag.length > 0 && lorasInTag.every((w2) => w2.value.enabled);
     ctx.fillStyle = "#fff";
     ctx.font = "12px Arial";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText(this.value.collapsed ? "▶" : "▼", posX, posY + midY);
-    this.hitAreas.collapse.bounds = [posX, 0, 15, height];
+    this.hitAreas.collapse.bounds = [0, 0, w, height];
     posX += 20;
     ctx.fillStyle = allEnabled ? "#4CAF50" : "#666";
-    ctx.fillRect(posX, posY + 4, 20, height - 8);
+    ctx.beginPath();
+    ctx.roundRect(posX, posY + 4, 20, height - 8, 3);
+    ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.fillText(allEnabled ? "✓" : "○", posX + 6, posY + midY);
     this.hitAreas.toggle.bounds = [posX, 0, 20, height];
@@ -858,6 +980,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.hitAreas = {
       enabled: { bounds: [0, 0], onDown: this.onEnabledDown, priority: 60 },
       lora: { bounds: [0, 0], onClick: this.onLoraClick, priority: 10 },
+      tag: { bounds: [0, 0], onClick: this.onTagClick, priority: 20 },
       strength: { bounds: [0, 0], onClick: this.onStrengthClick, priority: 80 },
       strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
       strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
@@ -894,12 +1017,12 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     ctx.restore();
   }
   drawFirstRow(ctx, node, w, posY, rowHeight, fullHeight) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     const margin = 8;
     let posX = margin + 6;
     const midY = rowHeight / 2;
     const toggleSize = 20;
-    const toggleY = (rowHeight - toggleSize) / 2 - 2;
+    const toggleY = (rowHeight - toggleSize) / 2;
     ctx.fillStyle = this.value.enabled ? "#4CAF50" : "#666";
     ctx.beginPath();
     ctx.roundRect(posX, posY + toggleY, toggleSize, toggleSize, 2);
@@ -913,7 +1036,9 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const loraWidgets = ((_a = node.customWidgets) == null ? void 0 : _a.filter((w2) => w2 instanceof SuperLoraWidget)) || [];
     const indexInLoras = loraWidgets.indexOf(this);
     const lastIndex = loraWidgets.length - 1;
-    const showMoveArrows = loraWidgets.length > 1;
+    const showMoveArrows = loraWidgets.length > 1 && ((_b = node == null ? void 0 : node.properties) == null ? void 0 : _b.showMoveArrows) !== false;
+    const showStrength = ((_c = node == null ? void 0 : node.properties) == null ? void 0 : _c.showStrengthControls) !== false;
+    const showRemove = ((_d = node == null ? void 0 : node.properties) == null ? void 0 : _d.showRemoveButton) !== false;
     const arrowSize = 20;
     const strengthWidth = 50;
     const btnSize = 20;
@@ -921,21 +1046,60 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const gapSmall = 2;
     const gap = 8;
     const rightEdge = node.size[0] - margin;
-    const removeX = rightEdge - removeSize - gap;
-    let cursorX = removeX - gap;
-    const plusX = cursorX - btnSize;
-    cursorX = plusX - gapSmall;
-    const strengthX = cursorX - strengthWidth;
-    cursorX = strengthX - gapSmall;
-    const minusX = cursorX - btnSize;
-    cursorX = minusX - gap;
-    let upX = cursorX - arrowSize;
-    let downX = upX - (arrowSize + 2);
-    if (!showMoveArrows) {
-      upX = downX = -9999;
+    let cursorX = rightEdge;
+    let removeX = -9999;
+    let plusX = -9999;
+    let minusX = -9999;
+    let strengthX = -9999;
+    let upX = -9999;
+    let downX = -9999;
+    if (showRemove) {
+      cursorX -= removeSize;
+      removeX = cursorX - gap;
+      cursorX -= gap;
+    }
+    if (showStrength) {
+      cursorX -= btnSize;
+      plusX = cursorX - gap;
+      cursorX -= gapSmall;
+      cursorX -= strengthWidth;
+      strengthX = cursorX - gap;
+      cursorX -= gapSmall;
+      cursorX -= btnSize;
+      minusX = cursorX - gap;
+      cursorX -= gap;
+    }
+    if (showMoveArrows) {
+      const arrowRightStart = showStrength ? minusX - gap : showRemove ? removeX - gap : rightEdge - gap;
+      upX = arrowRightStart - arrowSize - 4;
+      downX = upX - (arrowSize + 2);
+      cursorX -= gap;
+    }
+    if (((_e = node == null ? void 0 : node.properties) == null ? void 0 : _e.enableTags) && ((_f = node == null ? void 0 : node.properties) == null ? void 0 : _f.showTagChip) !== false) {
+      const iconSize = 20;
+      const iconY = posY + Math.floor((rowHeight - iconSize) / 2);
+      ctx.fillStyle = this.value.enabled ? "#3d5afe" : "#555";
+      ctx.beginPath();
+      ctx.roundRect(posX, iconY, iconSize, iconSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "12px Arial";
+      ctx.fillText("🏷", posX + iconSize / 2, posY + midY);
+      this.hitAreas.tag.bounds = [posX, 0, iconSize, fullHeight];
+      posX += iconSize + 6;
+      ctx.font = "12px 'Segoe UI', Arial, sans-serif";
+    } else {
+      this.hitAreas.tag.bounds = [0, 0, 0, 0];
     }
     const loraLeft = posX;
-    const loraMaxRight = showMoveArrows ? downX - gap : minusX - gap;
+    const rightMost = [
+      showMoveArrows ? downX : null,
+      showStrength ? minusX : null,
+      showRemove ? removeX : null
+    ].filter((v) => typeof v === "number");
+    const loraMaxRight = (rightMost.length ? Math.min(...rightMost) : rightEdge) - gap;
     const loraWidth = Math.max(100, loraMaxRight - loraLeft);
     const showTriggers = !!(node.properties && node.properties.showTriggerWords);
     const nameWidth = showTriggers ? Math.max(80, Math.floor(loraWidth * 0.6)) : loraWidth;
@@ -947,30 +1111,40 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const loraDisplay = this.truncateText(ctx, loraText, nameWidth);
     ctx.fillText(loraDisplay, loraLeft, posY + midY);
     this.hitAreas.lora.bounds = [loraLeft, 0, nameWidth, fullHeight];
+    const controlsAlpha = this.value.enabled ? 1 : 0.55;
+    ctx.save();
+    ctx.globalAlpha *= controlsAlpha;
     const triggerLeft = loraLeft + nameWidth;
     if (showTriggers && trigWidth > 0) {
       const hasTrigger = !!(this.value.triggerWords && String(this.value.triggerWords).trim());
-      ctx.textAlign = "right";
+      const pillH = 20;
+      const pillY = posY + Math.floor((rowHeight - pillH) / 2);
+      ctx.fillStyle = "#2f2f2f";
+      ctx.beginPath();
+      ctx.roundRect(triggerLeft, pillY, trigWidth, pillH, 3);
+      ctx.fill();
+      const padX = 6;
+      ctx.textAlign = "left";
       ctx.font = "10px 'Segoe UI', Arial, sans-serif";
       if (hasTrigger) {
         ctx.fillStyle = this.value.enabled ? "#fff" : "#aaa";
-        const trigDisplay = this.truncateText(ctx, String(this.value.triggerWords), trigWidth - 4);
-        ctx.fillText(trigDisplay, triggerLeft + trigWidth - 4, posY + midY);
+        const trigDisplay = this.truncateText(ctx, String(this.value.triggerWords), trigWidth - padX * 2);
+        ctx.fillText(trigDisplay, triggerLeft + padX, posY + midY);
       } else {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = "#888";
         const placeholder = "Click to add trigger words...";
-        const phDisplay = this.truncateText(ctx, placeholder, trigWidth - 4);
-        ctx.fillText(phDisplay, triggerLeft + trigWidth - 4, posY + midY);
+        const phDisplay = this.truncateText(ctx, placeholder, trigWidth - padX * 2);
+        ctx.fillText(phDisplay, triggerLeft + padX, posY + midY);
       }
       this.hitAreas.triggerWords.bounds = [triggerLeft, 0, trigWidth, fullHeight];
     } else {
       this.hitAreas.triggerWords.bounds = [0, 0, 0, 0];
     }
-    if (showMoveArrows) {
+    if (showMoveArrows && ((_g = node == null ? void 0 : node.properties) == null ? void 0 : _g.showMoveArrows) !== false) {
       const arrowY = (rowHeight - arrowSize) / 2;
       const disableDown = indexInLoras === lastIndex;
       const disableUp = indexInLoras === 0;
-      ctx.globalAlpha = disableDown ? 0.35 : 1;
+      ctx.globalAlpha = controlsAlpha * (disableDown ? 0.35 : 1);
       ctx.fillStyle = "#555";
       ctx.beginPath();
       ctx.roundRect(downX, posY + arrowY, arrowSize, arrowSize, 2);
@@ -980,7 +1154,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       ctx.font = "12px Arial";
       ctx.fillText("▼", downX + arrowSize / 2, posY + midY);
       this.hitAreas.moveDown.bounds = disableDown ? [0, 0, 0, 0] : [downX, 0, arrowSize, fullHeight];
-      ctx.globalAlpha = disableUp ? 0.35 : 1;
+      ctx.globalAlpha = controlsAlpha * (disableUp ? 0.35 : 1);
       ctx.fillStyle = "#555";
       ctx.beginPath();
       ctx.roundRect(upX, posY + arrowY, arrowSize, arrowSize, 2);
@@ -990,50 +1164,70 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       ctx.font = "12px Arial";
       ctx.fillText("▲", upX + arrowSize / 2, posY + midY);
       this.hitAreas.moveUp.bounds = disableUp ? [0, 0, 0, 0] : [upX, 0, arrowSize, fullHeight];
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = controlsAlpha;
     } else {
       this.hitAreas.moveUp.bounds = [0, 0, 0, 0];
       this.hitAreas.moveDown.bounds = [0, 0, 0, 0];
     }
     const btnY = (rowHeight - btnSize) / 2;
-    ctx.fillStyle = "#666";
-    ctx.beginPath();
-    ctx.roundRect(minusX, posY + btnY, btnSize, btnSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "12px Arial";
-    ctx.fillText("-", minusX + btnSize / 2, posY + midY);
-    this.hitAreas.strengthDown.bounds = [minusX, 0, btnSize, fullHeight];
-    const strengthY = (rowHeight - 20) / 2;
-    ctx.fillStyle = "#FF9800";
-    ctx.beginPath();
-    ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "12px Arial";
-    ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
-    this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
-    ctx.fillStyle = "#666";
-    ctx.beginPath();
-    ctx.roundRect(plusX, posY + btnY, btnSize, btnSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "12px Arial";
-    ctx.fillText("+", plusX + btnSize / 2, posY + midY);
-    this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
-    const removeY = (rowHeight - removeSize) / 2;
-    ctx.fillStyle = "#f44336";
-    ctx.beginPath();
-    ctx.roundRect(removeX, posY + removeY, removeSize, removeSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "14px Arial";
-    ctx.fillText("✖", removeX + removeSize / 2, posY + midY);
-    this.hitAreas.remove.bounds = [removeX, 0, removeSize, fullHeight];
+    if (showStrength) {
+      ctx.fillStyle = "#666";
+      ctx.beginPath();
+      ctx.roundRect(minusX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("-", minusX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthDown.bounds = [minusX, 0, btnSize, fullHeight];
+    } else {
+      this.hitAreas.strengthDown.bounds = [0, 0, 0, 0];
+    }
+    if (((_h = node == null ? void 0 : node.properties) == null ? void 0 : _h.showStrengthControls) !== false) {
+      const strengthY = (rowHeight - 20) / 2;
+      ctx.fillStyle = this.value.enabled ? "#FF9800" : "#666";
+      ctx.beginPath();
+      ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
+      ctx.fill();
+      ctx.fillStyle = this.value.enabled ? "#fff" : "#ddd";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
+      this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
+    } else {
+      this.hitAreas.strength.bounds = [0, 0, 0, 0];
+    }
+    if (((_i = node == null ? void 0 : node.properties) == null ? void 0 : _i.showStrengthControls) !== false) {
+      ctx.fillStyle = "#666";
+      ctx.beginPath();
+      ctx.roundRect(plusX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("+", plusX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
+    } else {
+      this.hitAreas.strengthUp.bounds = [0, 0, 0, 0];
+    }
+    ctx.restore();
+    if (((_j = node == null ? void 0 : node.properties) == null ? void 0 : _j.showRemoveButton) !== false) {
+      const removeY = (rowHeight - removeSize) / 2;
+      ctx.fillStyle = "#3a2a2a";
+      ctx.beginPath();
+      ctx.roundRect(removeX, posY + removeY, removeSize, removeSize, 2);
+      ctx.fill();
+      ctx.strokeStyle = "#5a3a3a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("🗑", removeX + removeSize / 2, posY + midY);
+      this.hitAreas.remove.bounds = [removeX, 0, removeSize, fullHeight];
+    } else {
+      this.hitAreas.remove.bounds = [0, 0, 0, 0];
+    }
   }
   // drawSecondRow removed in compact single-row layout
   isCollapsedByTag(node) {
@@ -1201,7 +1395,6 @@ const _SuperLoraNode = class _SuperLoraNode {
       const size = widget.computeSize();
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
       if (size[1] === 0 || isCollapsed) {
-        currentY += size[1] + margin;
         continue;
       }
       const height = widget instanceof SuperLoraWidget ? 34 : size[1];
@@ -1244,7 +1437,6 @@ const _SuperLoraNode = class _SuperLoraNode {
       const size = widget.computeSize();
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
       if (size[1] === 0 || isCollapsed) {
-        currentY += size[1] + margin;
         continue;
       }
       const height = widget instanceof SuperLoraWidget ? 34 : size[1];
@@ -1316,47 +1508,31 @@ const _SuperLoraNode = class _SuperLoraNode {
     const existingTags = this.getExistingTags(node);
     const commonTags = ["General", "Character", "Style", "Quality", "Effect"];
     const allTags = Array.from(/* @__PURE__ */ new Set([...commonTags, ...existingTags]));
-    const menuItems = allTags.map((tag) => ({
-      content: tag,
-      callback: () => {
+    const items = allTags.map((tag) => ({ id: tag, label: tag }));
+    this.showSearchOverlay({
+      title: "Select Tag",
+      placeholder: "Search or create tag...",
+      items,
+      allowCreate: true,
+      onChoose: (tag) => {
         widget.value.tag = tag;
         this.organizeByTags(node);
         this.calculateNodeSize(node);
         node.setDirtyCanvas(true, false);
       }
-    }));
-    menuItems.push(null, {
-      content: "Custom...",
-      callback: () => {
-        const customTag = prompt("Enter custom tag:", widget.value.tag);
-        if (customTag) {
-          widget.value.tag = customTag;
-          this.organizeByTags(node);
-          this.calculateNodeSize(node);
-          node.setDirtyCanvas(true, false);
-        }
-      }
     });
-    new LiteGraph.ContextMenu(menuItems, { title: "Select Tag" });
   }
   /**
    * Show settings dialog
    */
   static showSettingsDialog(node, event) {
-    const menuItems = [
+    const coreItems = [
       {
         content: `${node.properties.enableTags ? "✅" : "❌"} Enable Tags`,
         callback: () => {
           node.properties.enableTags = !node.properties.enableTags;
           this.organizeByTags(node);
           this.calculateNodeSize(node);
-          node.setDirtyCanvas(true, false);
-        }
-      },
-      {
-        content: `${node.properties.showTriggerWords ? "✅" : "❌"} Show Trigger Words`,
-        callback: () => {
-          node.properties.showTriggerWords = !node.properties.showTriggerWords;
           node.setDirtyCanvas(true, false);
         }
       },
@@ -1374,6 +1550,44 @@ const _SuperLoraNode = class _SuperLoraNode {
         }
       }
     ];
+    const showItems = [
+      {
+        content: `${node.properties.showTriggerWords ? "✅" : "❌"} Show Trigger Words`,
+        callback: () => {
+          node.properties.showTriggerWords = !node.properties.showTriggerWords;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showTagChip !== false ? "✅" : "❌"} Show Tag Chip`,
+        callback: () => {
+          node.properties.showTagChip = node.properties.showTagChip === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showMoveArrows !== false ? "✅" : "❌"} Show Move Arrows`,
+        callback: () => {
+          node.properties.showMoveArrows = node.properties.showMoveArrows === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showRemoveButton !== false ? "✅" : "❌"} Show Remove Button`,
+        callback: () => {
+          node.properties.showRemoveButton = node.properties.showRemoveButton === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showStrengthControls !== false ? "✅" : "❌"} Show Strength Controls`,
+        callback: () => {
+          node.properties.showStrengthControls = node.properties.showStrengthControls === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      }
+    ];
+    const menuItems = [...coreItems, null, ...showItems];
     new LiteGraph.ContextMenu(menuItems, { title: "Settings", event });
   }
   /**
@@ -1418,9 +1632,42 @@ const _SuperLoraNode = class _SuperLoraNode {
             }
           } catch (error) {
             console.error(`Template load error for "${name}":`, error);
-            this.showToast(`❌ Error loading template "${name}". Check console for details.`, "error");
+            this.showToast(`❌ Error loading template. Check console for details.`, "error");
           }
-        }
+        },
+        rightActions: [
+          {
+            icon: "✏️",
+            title: "Rename template",
+            onClick: async (name) => {
+              this.showNameOverlay({
+                title: "Rename Template",
+                placeholder: "New template name...",
+                initial: name,
+                submitLabel: "Rename",
+                onCommit: async (newName) => {
+                  const src = (name || "").trim();
+                  const dst = (newName || "").trim();
+                  if (!dst || dst === src) return;
+                  const ok = await this.templateService.renameTemplate(src, dst);
+                  this.showToast(ok ? "✅ Template renamed" : "❌ Failed to rename", ok ? "success" : "error");
+                  if (ok) this.showLoadTemplateDialog(node, event);
+                }
+              });
+            }
+          },
+          {
+            icon: "🗑",
+            title: "Delete template",
+            onClick: async (name) => {
+              const ok = confirm(`Delete template "${name}"? This cannot be undone.`);
+              if (!ok) return;
+              const deleted = await this.templateService.deleteTemplate(name);
+              this.showToast(deleted ? "✅ Template deleted" : "❌ Failed to delete template", deleted ? "success" : "error");
+              if (deleted) this.showLoadTemplateDialog(node, event);
+            }
+          }
+        ]
       });
     } catch (error) {
       console.error("Failed to show template selector:", error);
@@ -1431,12 +1678,19 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Add a new LoRA widget
    */
   static addLoraWidget(node, config) {
+    var _a, _b;
     const widget = new SuperLoraWidget(`lora_${Date.now()}`);
     if (config) {
       Object.assign(widget.value, config);
     }
+    if ((_a = node == null ? void 0 : node.properties) == null ? void 0 : _a.enableTags) {
+      widget.value.tag = widget.value.tag || "General";
+    }
     node.customWidgets = node.customWidgets || [];
     node.customWidgets.push(widget);
+    if ((_b = node == null ? void 0 : node.properties) == null ? void 0 : _b.enableTags) {
+      this.organizeByTags(node);
+    }
     this.calculateNodeSize(node);
     node.setDirtyCanvas(true, false);
     return widget;
@@ -1731,6 +1985,10 @@ const _SuperLoraNode = class _SuperLoraNode {
   }
   // Overlay utilities
   static showSearchOverlay(opts) {
+    try {
+      document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el) => el.remove());
+    } catch {
+    }
     const overlay = document.createElement("div");
     overlay.style.cssText = `
       position: fixed;
@@ -1742,6 +2000,7 @@ const _SuperLoraNode = class _SuperLoraNode {
       justify-content: center;
       backdrop-filter: blur(2px);
     `;
+    overlay.setAttribute("data-super-lora-overlay", "1");
     const panel = document.createElement("div");
     panel.style.cssText = `
       width: 560px;
@@ -1795,15 +2054,29 @@ const _SuperLoraNode = class _SuperLoraNode {
     const render = (term) => {
       list.innerHTML = "";
       const q = (term || "").trim().toLowerCase();
-      const filtered = q ? opts.items.filter((i) => i.label.toLowerCase().includes(q)) : opts.items;
+      let filtered = q ? opts.items.filter((i) => i.label.toLowerCase().includes(q)) : opts.items;
+      if (opts.allowCreate && q) {
+        const exact = opts.items.some((i) => i.label.toLowerCase() === q);
+        if (!exact) {
+          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
+        }
+      }
       empty.style.display = filtered.length ? "none" : "block";
       const maxToShow = Math.min(2e3, filtered.length);
       filtered.slice(0, maxToShow).forEach((i) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.textContent = i.label + (i.disabled ? "  (added)" : "");
-        row.disabled = !!i.disabled;
+        const row = document.createElement("div");
         row.style.cssText = `
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0;
+        `;
+        const leftBtn = document.createElement("button");
+        leftBtn.type = "button";
+        leftBtn.textContent = i.label + (i.disabled ? "  (added)" : "");
+        leftBtn.disabled = !!i.disabled;
+        leftBtn.style.cssText = `
+          flex: 1;
           text-align: left;
           padding: 10px 12px;
           background: ${i.disabled ? "#2a2a2a" : "#252525"};
@@ -1812,12 +2085,42 @@ const _SuperLoraNode = class _SuperLoraNode {
           border-radius: 6px;
           cursor: ${i.disabled ? "not-allowed" : "pointer"};
         `;
-        row.addEventListener("click", () => {
+        leftBtn.addEventListener("click", () => {
           if (!i.disabled) {
             opts.onChoose(i.id);
             close();
           }
         });
+        row.appendChild(leftBtn);
+        const actions = [];
+        if (opts.rightActions && opts.rightActions.length) {
+          actions.push(...opts.rightActions);
+        } else if (opts.onRightAction) {
+          actions.push({ icon: opts.rightActionIcon || "🗑", title: opts.rightActionTitle, onClick: opts.onRightAction });
+        }
+        if (actions.length && !i.disabled) {
+          actions.forEach((action) => {
+            const rightBtn = document.createElement("button");
+            rightBtn.type = "button";
+            rightBtn.textContent = action.icon;
+            if (action.title) rightBtn.title = action.title;
+            rightBtn.style.cssText = `
+              margin-left: 8px;
+              padding: 10px 12px;
+              background: #3a2a2a;
+              color: #fff;
+              border: 1px solid #5a3a3a;
+              border-radius: 6px;
+              cursor: pointer;
+            `;
+            rightBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              action.onClick(i.id);
+            });
+            row.appendChild(rightBtn);
+          });
+        }
         list.appendChild(row);
       });
     };

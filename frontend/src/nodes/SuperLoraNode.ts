@@ -144,8 +144,8 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     const buttons = [
       { id: 'toggleAll', color: allState ? "#4CAF50" : "#666", text: "Toggle All", shortText: "Toggle", icon: "⏯️", priority: 1 },
       { id: 'addLora', color: "#2196F3", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
-      { id: 'saveTemplate', color: "#FF9800", text: "Save", shortText: "Save", icon: "💾", priority: 3 },
-      { id: 'loadTemplate', color: "#9C27B0", text: "Load", shortText: "Load", icon: "📂", priority: 4 },
+      { id: 'saveTemplate', color: "#FF9800", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
+      { id: 'loadTemplate', color: "#9C27B0", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
       { id: 'settings', color: "#607D8B", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
     ];
 
@@ -251,8 +251,8 @@ class SuperLoraTagWidget extends SuperLoraBaseWidget {
     super(`tag_${tag}`);
     this.value = { type: "SuperLoraTagWidget", tag, collapsed: false };
     this.hitAreas = {
-      toggle: { bounds: [0, 0], onDown: this.onToggleDown },
-      collapse: { bounds: [0, 0], onDown: this.onCollapseDown }
+      toggle: { bounds: [0, 0], onDown: this.onToggleDown, priority: 10 },
+      collapse: { bounds: [0, 0], onDown: this.onCollapseDown, priority: 0 }
     };
   }
 
@@ -261,33 +261,38 @@ class SuperLoraTagWidget extends SuperLoraBaseWidget {
     let posX = margin;
 
     ctx.save();
-    ctx.fillStyle = "#3a3a3a";
+    // Group container background
+    ctx.fillStyle = "#2d2d2d";
     ctx.fillRect(0, posY, w, height);
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, posY, w, height);
     
     const midY = height / 2; // Relative middle Y
     const lorasInTag = this.getLorasInTag(node);
-    const allEnabled = lorasInTag.every((w: any) => w.value.enabled);
+    const allEnabled = lorasInTag.length > 0 && lorasInTag.every((w: any) => w.value.enabled);
 
     // Collapse arrow
     ctx.fillStyle = "#fff";
     ctx.font = "12px Arial";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.value.collapsed ? "▶" : "▼", posX, posY + midY); // Absolute Y for draw
-    this.hitAreas.collapse.bounds = [posX, 0, 15, height]; // Relative Y for hitbox
+    ctx.fillText(this.value.collapsed ? "▶" : "▼", posX, posY + midY);
+    // Make the entire banner clickable for collapse
+    this.hitAreas.collapse.bounds = [0, 0, w, height];
     posX += 20;
 
     // Tag toggle
     ctx.fillStyle = allEnabled ? "#4CAF50" : "#666";
-    ctx.fillRect(posX, posY + 4, 20, height - 8); // Absolute Y for draw
+    ctx.beginPath(); ctx.roundRect(posX, posY + 4, 20, height - 8, 3); ctx.fill();
     ctx.fillStyle = "#fff";
-    ctx.fillText(allEnabled ? "✓" : "○", posX + 6, posY + midY); // Absolute Y for draw
-    this.hitAreas.toggle.bounds = [posX, 0, 20, height]; // Relative Y for hitbox
+    ctx.fillText(allEnabled ? "✓" : "○", posX + 6, posY + midY);
+    this.hitAreas.toggle.bounds = [posX, 0, 20, height];
     posX += 30;
 
     // Tag name and count
     ctx.fillStyle = "#fff";
-    ctx.fillText(`${this.tag} (${lorasInTag.length})`, posX, posY + midY); // Absolute Y for draw
+    ctx.fillText(`${this.tag} (${lorasInTag.length})`, posX, posY + midY);
 
     ctx.restore();
   }
@@ -339,6 +344,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.hitAreas = {
       enabled: { bounds: [0, 0], onDown: this.onEnabledDown, priority: 60 },
       lora: { bounds: [0, 0], onClick: this.onLoraClick, priority: 10 },
+      tag: { bounds: [0, 0], onClick: this.onTagClick, priority: 20 },
       strength: { bounds: [0, 0], onClick: this.onStrengthClick, priority: 80 },
       strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
       strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
@@ -396,7 +402,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
 
     // Enable toggle (modern rounded toggle) - square like + and - buttons
     const toggleSize = 20;
-    const toggleY = (rowHeight - toggleSize) / 2 - 2; // RELATIVE Y for logic - move up slightly
+    const toggleY = (rowHeight - toggleSize) / 2; // center align
     ctx.fillStyle = this.value.enabled ? "#4CAF50" : "#666";
     ctx.beginPath();
     // Use absolute Y for drawing
@@ -412,11 +418,13 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.hitAreas.enabled.bounds = [posX, 0, toggleSize, fullHeight];
     posX += toggleSize + 8; // More spacing after toggle
 
-    // Dimensions
+    // Dimensions & control visibility
     const loraWidgets = node.customWidgets?.filter((w: any) => w instanceof SuperLoraWidget) || [];
     const indexInLoras = loraWidgets.indexOf(this as any);
     const lastIndex = loraWidgets.length - 1;
-    const showMoveArrows = loraWidgets.length > 1;
+    const showMoveArrows = (loraWidgets.length > 1) && (node?.properties?.showMoveArrows !== false);
+    const showStrength = node?.properties?.showStrengthControls !== false;
+    const showRemove = node?.properties?.showRemoveButton !== false;
 
     const arrowSize = 20;
     const strengthWidth = 50;
@@ -425,29 +433,55 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const gapSmall = 2;
     const gap = 8;
 
-    // Determine layout bounds
+    // Dynamic right-to-left placement
     const rightEdge = node.size[0] - margin;
-    const removeX =  rightEdge - removeSize - gap;
+    let cursorX = rightEdge;
+    let removeX = -9999;
+    let plusX = -9999;
+    let minusX = -9999;
+    let strengthX = -9999;
+    let upX = -9999;
+    let downX = -9999;
 
-    // Place strength and +/- anchored to right (before remove)
-    let cursorX = removeX - gap; // start left of remove
-    const plusX = cursorX - btnSize;
-    cursorX = plusX - gapSmall;
-    const strengthX = cursorX - strengthWidth;
-    cursorX = strengthX - gapSmall;
-    const minusX = cursorX - btnSize;
-    cursorX = minusX - gap;
+    if (showRemove) {
+      cursorX -= removeSize; removeX = cursorX - gap; cursorX -= gap;
+    }
+    if (showStrength) {
+      cursorX -= btnSize; plusX = cursorX - gap; cursorX -= gapSmall;
+      cursorX -= strengthWidth; strengthX = cursorX - gap; cursorX -= gapSmall;
+      cursorX -= btnSize; minusX = cursorX - gap; cursorX -= gap;
+    }
+    if (showMoveArrows) {
+      const arrowRightStart = showStrength ? (minusX - gap) : (showRemove ? (removeX - gap) : (rightEdge - gap));
+      // Reserve an extra small gap to the right of UP button
+      upX = arrowRightStart - arrowSize - 4;
+      downX = upX - (arrowSize + 2);
+      cursorX -= gap;
+    }
 
-    // Place arrows if visible (both left of minus)
-    let upX = cursorX - arrowSize;
-    let downX = upX - (arrowSize + 2); // place down to the LEFT of up
-    if (!showMoveArrows) {
-      upX = downX = -9999; // hide offscreen
+    // Tag icon before name (if tags enabled)
+    if (node?.properties?.enableTags && node?.properties?.showTagChip !== false) {
+      const iconSize = 20;
+      const iconY = posY + Math.floor((rowHeight - iconSize) / 2);
+      ctx.fillStyle = this.value.enabled ? "#3d5afe" : "#555";
+      ctx.beginPath(); ctx.roundRect(posX, iconY, iconSize, iconSize, 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "12px Arial";
+      ctx.fillText("🏷", posX + iconSize / 2, posY + midY);
+      this.hitAreas.tag.bounds = [posX, 0, iconSize, fullHeight];
+      posX += iconSize + 6;
+      ctx.font = "12px 'Segoe UI', Arial, sans-serif";
+    } else {
+      this.hitAreas.tag.bounds = [0,0,0,0];
     }
 
     // Compute LoRA name width as the space left
     const loraLeft = posX;
-    const loraMaxRight = showMoveArrows ? (downX - gap) : (minusX - gap);
+    const rightMost = [
+      showMoveArrows ? downX : null,
+      showStrength ? minusX : null,
+      showRemove ? removeX : null
+    ].filter(v => typeof v === 'number') as number[];
+    const loraMaxRight = (rightMost.length ? Math.min(...rightMost) : rightEdge) - gap;
     const loraWidth = Math.max(100, loraMaxRight - loraLeft);
 
     const showTriggers = !!(node.properties && node.properties.showTriggerWords);
@@ -464,21 +498,31 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     ctx.fillText(loraDisplay, loraLeft, posY + midY);
     this.hitAreas.lora.bounds = [loraLeft, 0, nameWidth, fullHeight];
 
+    // Dim subsequent controls when disabled (keep remove at full opacity)
+    const controlsAlpha = this.value.enabled ? 1 : 0.55;
+    ctx.save();
+    ctx.globalAlpha *= controlsAlpha;
+
     // Draw trigger text or placeholder (right) if setting enabled
     const triggerLeft = loraLeft + nameWidth;
     if (showTriggers && trigWidth > 0) {
       const hasTrigger = !!(this.value.triggerWords && String(this.value.triggerWords).trim());
-      ctx.textAlign = "right";
+      const pillH = 20;
+      const pillY = posY + Math.floor((rowHeight - pillH) / 2);
+      ctx.fillStyle = "#2f2f2f";
+      ctx.beginPath(); ctx.roundRect(triggerLeft, pillY, trigWidth, pillH, 3); ctx.fill();
+      const padX = 6;
+      ctx.textAlign = "left";
       ctx.font = "10px 'Segoe UI', Arial, sans-serif";
       if (hasTrigger) {
         ctx.fillStyle = this.value.enabled ? "#fff" : "#aaa";
-        const trigDisplay = this.truncateText(ctx, String(this.value.triggerWords), trigWidth - 4);
-        ctx.fillText(trigDisplay, triggerLeft + trigWidth - 4, posY + midY);
+        const trigDisplay = this.truncateText(ctx, String(this.value.triggerWords), trigWidth - padX * 2);
+        ctx.fillText(trigDisplay, triggerLeft + padX, posY + midY);
       } else {
-        ctx.fillStyle = "#666";
+        ctx.fillStyle = "#888";
         const placeholder = "Click to add trigger words...";
-        const phDisplay = this.truncateText(ctx, placeholder, trigWidth - 4);
-        ctx.fillText(phDisplay, triggerLeft + trigWidth - 4, posY + midY);
+        const phDisplay = this.truncateText(ctx, placeholder, trigWidth - padX * 2);
+        ctx.fillText(phDisplay, triggerLeft + padX, posY + midY);
       }
       this.hitAreas.triggerWords.bounds = [triggerLeft, 0, trigWidth, fullHeight];
     } else {
@@ -486,14 +530,14 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       this.hitAreas.triggerWords.bounds = [0, 0, 0, 0];
     }
 
-    // Draw arrows (with disable state for first/last)
-    if (showMoveArrows) {
+    // Draw arrows (with disable state for first/last) with gap before minus
+    if (showMoveArrows && node?.properties?.showMoveArrows !== false) {
       const arrowY = (rowHeight - arrowSize) / 2;
       const disableDown = indexInLoras === lastIndex;
       const disableUp = indexInLoras === 0;
 
       // Down
-      ctx.globalAlpha = disableDown ? 0.35 : 1.0;
+      ctx.globalAlpha = (controlsAlpha) * (disableDown ? 0.35 : 1.0);
       ctx.fillStyle = "#555"; ctx.beginPath();
       ctx.roundRect(downX, posY + arrowY, arrowSize, arrowSize, 2);
       ctx.fill();
@@ -502,7 +546,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       this.hitAreas.moveDown.bounds = disableDown ? [0, 0, 0, 0] : [downX, 0, arrowSize, fullHeight];
 
       // Up
-      ctx.globalAlpha = disableUp ? 0.35 : 1.0;
+      ctx.globalAlpha = (controlsAlpha) * (disableUp ? 0.35 : 1.0);
       ctx.fillStyle = "#555"; ctx.beginPath();
       ctx.roundRect(upX, posY + arrowY, arrowSize, arrowSize, 2);
       ctx.fill();
@@ -510,46 +554,68 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       ctx.fillText("▲", upX + arrowSize / 2, posY + midY);
       this.hitAreas.moveUp.bounds = disableUp ? [0, 0, 0, 0] : [upX, 0, arrowSize, fullHeight];
 
-      ctx.globalAlpha = 1.0;
+      ctx.globalAlpha = controlsAlpha;
     } else {
       this.hitAreas.moveUp.bounds = [0, 0, 0, 0];
       this.hitAreas.moveDown.bounds = [0, 0, 0, 0];
     }
 
-    // Draw minus
+    // Draw minus (respect strength visibility)
     const btnY = (rowHeight - btnSize) / 2;
-    ctx.fillStyle = "#666"; ctx.beginPath();
-    ctx.roundRect(minusX, posY + btnY, btnSize, btnSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
-    ctx.fillText("-", minusX + btnSize / 2, posY + midY);
-    this.hitAreas.strengthDown.bounds = [minusX, 0, btnSize, fullHeight];
+    if (showStrength) {
+      ctx.fillStyle = "#666"; ctx.beginPath();
+      ctx.roundRect(minusX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+      ctx.fillText("-", minusX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthDown.bounds = [minusX, 0, btnSize, fullHeight];
+    } else {
+      this.hitAreas.strengthDown.bounds = [0,0,0,0];
+    }
 
     // Draw strength
-    const strengthY = (rowHeight - 20) / 2;
-    ctx.fillStyle = "#FF9800"; ctx.beginPath();
-    ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
-    ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
-    ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
-    this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
+    if (node?.properties?.showStrengthControls !== false) {
+      const strengthY = (rowHeight - 20) / 2;
+      ctx.fillStyle = this.value.enabled ? "#FF9800" : "#666"; ctx.beginPath();
+      ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
+      ctx.fill();
+      ctx.fillStyle = this.value.enabled ? "#fff" : "#ddd"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+      ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
+      this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
+    } else {
+      this.hitAreas.strength.bounds = [0,0,0,0];
+    }
 
     // Draw plus
-    ctx.fillStyle = "#666"; ctx.beginPath();
-    ctx.roundRect(plusX, posY + btnY, btnSize, btnSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
-    ctx.fillText("+", plusX + btnSize / 2, posY + midY);
-    this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
+    if (node?.properties?.showStrengthControls !== false) {
+      ctx.fillStyle = "#666"; ctx.beginPath();
+      ctx.roundRect(plusX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+      ctx.fillText("+", plusX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
+    } else {
+      this.hitAreas.strengthUp.bounds = [0,0,0,0];
+    }
 
-    // Draw remove (X)
-    const removeY = (rowHeight - removeSize) / 2;
-    ctx.fillStyle = "#f44336"; ctx.beginPath();
-    ctx.roundRect(removeX, posY + removeY, removeSize, removeSize, 2);
-    ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "14px Arial";
-    ctx.fillText("✖", removeX + removeSize / 2, posY + midY);
-    this.hitAreas.remove.bounds = [removeX, 0, removeSize, fullHeight];
+    // End dim group before drawing remove button
+    ctx.restore();
+
+    // Draw remove (trash icon, styled like overlay buttons)
+    if (node?.properties?.showRemoveButton !== false) {
+      const removeY = (rowHeight - removeSize) / 2;
+      // Background and subtle border to match overlay design
+      ctx.fillStyle = "#3a2a2a"; ctx.beginPath();
+      ctx.roundRect(removeX, posY + removeY, removeSize, removeSize, 2);
+      ctx.fill();
+      ctx.strokeStyle = "#5a3a3a"; ctx.lineWidth = 1; ctx.stroke();
+      // Trash icon
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+      ctx.fillText("🗑", removeX + removeSize / 2, posY + midY);
+      this.hitAreas.remove.bounds = [removeX, 0, removeSize, fullHeight];
+    } else {
+      this.hitAreas.remove.bounds = [0,0,0,0];
+    }
   }
 
   // drawSecondRow removed in compact single-row layout
@@ -863,7 +929,7 @@ export class SuperLoraNode {
       // Check if the widget is collapsed by its tag
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
       if (size[1] === 0 || isCollapsed) {
-        currentY += size[1] + margin;
+        // Skip collapsed widgets entirely so groups above pull up
         continue;
       }
 
@@ -917,7 +983,7 @@ export class SuperLoraNode {
       // Also respect collapsed widgets during hit detection
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
       if (size[1] === 0 || isCollapsed) {
-        currentY += size[1] + margin;
+        // Skip collapsed widgets without advancing Y so lower headers align
         continue;
       }
 
@@ -1002,51 +1068,34 @@ export class SuperLoraNode {
     const existingTags = this.getExistingTags(node);
     const commonTags = ["General", "Character", "Style", "Quality", "Effect"];
     const allTags = Array.from(new Set([...commonTags, ...existingTags]));
-    
-    const menuItems = allTags.map(tag => ({
-      content: tag,
-        callback: () => {
-          widget.value.tag = tag;
-          this.organizeByTags(node);
-          this.calculateNodeSize(node);
-          node.setDirtyCanvas(true, false);
-        }
-    }));
-    
-    menuItems.push(null, {
-      content: "Custom...",
-      callback: () => {
-        const customTag = prompt("Enter custom tag:", widget.value.tag);
-        if (customTag) {
-          widget.value.tag = customTag;
-          this.organizeByTags(node);
-          this.calculateNodeSize(node);
-          node.setDirtyCanvas(true, false);
-        }
+    const items = allTags.map(tag => ({ id: tag, label: tag }));
+
+    this.showSearchOverlay({
+      title: 'Select Tag',
+      placeholder: 'Search or create tag...',
+      items,
+      allowCreate: true,
+      onChoose: (tag: string) => {
+        widget.value.tag = tag;
+        this.organizeByTags(node);
+        this.calculateNodeSize(node);
+        node.setDirtyCanvas(true, false);
       }
     });
-
-    new LiteGraph.ContextMenu(menuItems, { title: 'Select Tag' });
   }
 
   /**
    * Show settings dialog
    */
   static showSettingsDialog(node: any, event?: any): void {
-    const menuItems = [
+    // Top: core toggles
+    const coreItems: any[] = [
       {
         content: `${node.properties.enableTags ? "✅" : "❌"} Enable Tags`,
         callback: () => {
           node.properties.enableTags = !node.properties.enableTags;
           this.organizeByTags(node);
           this.calculateNodeSize(node);
-          node.setDirtyCanvas(true, false);
-        }
-      },
-      {
-        content: `${node.properties.showTriggerWords ? "✅" : "❌"} Show Trigger Words`,
-        callback: () => {
-          node.properties.showTriggerWords = !node.properties.showTriggerWords;
           node.setDirtyCanvas(true, false);
         }
       },
@@ -1065,6 +1114,46 @@ export class SuperLoraNode {
       }
     ];
 
+    // Bottom: visibility toggles
+    const showItems: any[] = [
+      {
+        content: `${node.properties.showTriggerWords ? "✅" : "❌"} Show Trigger Words`,
+        callback: () => {
+          node.properties.showTriggerWords = !node.properties.showTriggerWords;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showTagChip !== false ? "✅" : "❌"} Show Tag Chip`,
+        callback: () => {
+          node.properties.showTagChip = node.properties.showTagChip === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showMoveArrows !== false ? "✅" : "❌"} Show Move Arrows`,
+        callback: () => {
+          node.properties.showMoveArrows = node.properties.showMoveArrows === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showRemoveButton !== false ? "✅" : "❌"} Show Remove Button`,
+        callback: () => {
+          node.properties.showRemoveButton = node.properties.showRemoveButton === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showStrengthControls !== false ? "✅" : "❌"} Show Strength Controls`,
+        callback: () => {
+          node.properties.showStrengthControls = node.properties.showStrengthControls === false ? true : false;
+          node.setDirtyCanvas(true, false);
+        }
+      }
+    ];
+
+    const menuItems: any[] = [...coreItems, null, ...showItems];
     new LiteGraph.ContextMenu(menuItems, { title: 'Settings', event: event });
   }
 
@@ -1114,9 +1203,42 @@ export class SuperLoraNode {
             }
           } catch (error) {
             console.error(`Template load error for "${name}":`, error);
-            this.showToast(`❌ Error loading template "${name}". Check console for details.`, 'error');
+            this.showToast(`❌ Error loading template. Check console for details.`, 'error');
           }
-        }
+        },
+        rightActions: [
+          {
+            icon: '✏️',
+            title: 'Rename template',
+            onClick: async (name: string) => {
+              this.showNameOverlay({
+                title: 'Rename Template',
+                placeholder: 'New template name...',
+                initial: name,
+                submitLabel: 'Rename',
+                onCommit: async (newName: string) => {
+                  const src = (name || '').trim();
+                  const dst = (newName || '').trim();
+                  if (!dst || dst === src) return;
+                  const ok = await this.templateService.renameTemplate(src, dst);
+                  this.showToast(ok ? '✅ Template renamed' : '❌ Failed to rename', ok ? 'success' : 'error');
+                  if (ok) this.showLoadTemplateDialog(node, event);
+                }
+              });
+            }
+          },
+          {
+            icon: '🗑',
+            title: 'Delete template',
+            onClick: async (name: string) => {
+              const ok = confirm(`Delete template "${name}"? This cannot be undone.`);
+              if (!ok) return;
+              const deleted = await this.templateService.deleteTemplate(name);
+              this.showToast(deleted ? '✅ Template deleted' : '❌ Failed to delete template', deleted ? 'success' : 'error');
+              if (deleted) this.showLoadTemplateDialog(node, event);
+            }
+          }
+        ]
       });
     } catch (error) {
       console.error('Failed to show template selector:', error);
@@ -1133,10 +1255,19 @@ export class SuperLoraNode {
     if (config) {
       Object.assign(widget.value, config);
     }
+    // Ensure default tag is General when tags are enabled
+    if (node?.properties?.enableTags) {
+      widget.value.tag = widget.value.tag || 'General';
+    }
     
     // Append to bottom (after all existing widgets)
     node.customWidgets = node.customWidgets || [];
     node.customWidgets.push(widget);
+
+    // If tags are enabled, re-group under headers immediately
+    if (node?.properties?.enableTags) {
+      this.organizeByTags(node);
+    }
     
     // Update node size and trigger redraw
     this.calculateNodeSize(node);
@@ -1195,8 +1326,10 @@ export class SuperLoraNode {
       if (!tagWidget) {
         tagWidget = new SuperLoraTagWidget(tag);
       }
-      
+
       node.customWidgets.push(tagWidget);
+      // Insert a subtle group border/separator as a visual container
+      // Tag headers already provide the title; lora rows follow.
       node.customWidgets.push(...tagGroups[tag]);
     }
   }
@@ -1475,7 +1608,12 @@ export class SuperLoraNode {
   }
 
   // Overlay utilities
-  private static showSearchOverlay(opts: { title: string; placeholder: string; items: { id: string; label: string; disabled?: boolean }[]; onChoose: (id: string) => void; }): void {
+  private static showSearchOverlay(opts: { title: string; placeholder: string; items: { id: string; label: string; disabled?: boolean }[]; onChoose: (id: string) => void; allowCreate?: boolean, onRightAction?: (id: string) => void, rightActionIcon?: string, rightActionTitle?: string, rightActions?: Array<{ icon: string; title?: string; onClick: (id: string) => void }> }): void {
+    // Ensure only one overlay at a time
+    try {
+      document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el: any) => el.remove());
+    } catch {}
+
     const overlay = document.createElement('div');
     overlay.style.cssText = `
       position: fixed;
@@ -1487,6 +1625,7 @@ export class SuperLoraNode {
       justify-content: center;
       backdrop-filter: blur(2px);
     `;
+    overlay.setAttribute('data-super-lora-overlay', '1');
 
     const panel = document.createElement('div');
     panel.style.cssText = `
@@ -1548,17 +1687,36 @@ export class SuperLoraNode {
     const render = (term: string) => {
       list.innerHTML = '';
       const q = (term || '').trim().toLowerCase();
-      const filtered = q
+      let filtered = q
         ? opts.items.filter(i => i.label.toLowerCase().includes(q))
         : opts.items;
+
+      // Optional create-new row when allowed and search doesn't exactly match
+      if (opts.allowCreate && q) {
+        const exact = opts.items.some(i => i.label.toLowerCase() === q);
+        if (!exact) {
+          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
+        }
+      }
+
       empty.style.display = filtered.length ? 'none' : 'block';
       const maxToShow = Math.min(2000, filtered.length); // show many, still capped for perf
       filtered.slice(0, maxToShow).forEach(i => {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.textContent = i.label + (i.disabled ? '  (added)' : '');
-        row.disabled = !!i.disabled;
+        const row = document.createElement('div');
         row.style.cssText = `
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0;
+        `;
+
+        // Left main button (select)
+        const leftBtn = document.createElement('button');
+        leftBtn.type = 'button';
+        leftBtn.textContent = i.label + (i.disabled ? '  (added)' : '');
+        leftBtn.disabled = !!i.disabled;
+        leftBtn.style.cssText = `
+          flex: 1;
           text-align: left;
           padding: 10px 12px;
           background: ${i.disabled ? '#2a2a2a' : '#252525'};
@@ -1567,7 +1725,36 @@ export class SuperLoraNode {
           border-radius: 6px;
           cursor: ${i.disabled ? 'not-allowed' : 'pointer'};
         `;
-        row.addEventListener('click', () => { if (!i.disabled) { opts.onChoose(i.id); close(); } });
+        leftBtn.addEventListener('click', () => { if (!i.disabled) { opts.onChoose(i.id); close(); } });
+        row.appendChild(leftBtn);
+
+        // Right action buttons (e.g., rename, delete) aligned far right
+        const actions: Array<{ icon: string; title?: string; onClick: (id: string) => void }> = [];
+        if (opts.rightActions && opts.rightActions.length) {
+          actions.push(...opts.rightActions);
+        } else if (opts.onRightAction) {
+          actions.push({ icon: (opts.rightActionIcon || '🗑'), title: opts.rightActionTitle, onClick: opts.onRightAction });
+        }
+        if (actions.length && !i.disabled) {
+          actions.forEach((action) => {
+            const rightBtn = document.createElement('button');
+            rightBtn.type = 'button';
+            rightBtn.textContent = action.icon;
+            if (action.title) rightBtn.title = action.title;
+            rightBtn.style.cssText = `
+              margin-left: 8px;
+              padding: 10px 12px;
+              background: #3a2a2a;
+              color: #fff;
+              border: 1px solid #5a3a3a;
+              border-radius: 6px;
+              cursor: pointer;
+            `;
+            rightBtn.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); action.onClick(i.id); });
+            row.appendChild(rightBtn);
+          });
+        }
+
         list.appendChild(row);
       });
     };
