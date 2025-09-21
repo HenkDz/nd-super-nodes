@@ -463,9 +463,11 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     if (node?.properties?.enableTags && node?.properties?.showTagChip !== false) {
       const iconSize = 20;
       const iconY = posY + Math.floor((rowHeight - iconSize) / 2);
-      ctx.fillStyle = this.value.enabled ? "#3d5afe" : "#555";
+      // Neutral tag chip background
+      ctx.fillStyle = this.value.enabled ? "#333" : "#2a2a2a";
       ctx.beginPath(); ctx.roundRect(posX, iconY, iconSize, iconSize, 2); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "12px Arial";
+      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "#ddd"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "12px Arial";
       ctx.fillText("🏷", posX + iconSize / 2, posY + midY);
       this.hitAreas.tag.bounds = [posX, 0, iconSize, fullHeight];
       posX += iconSize + 6;
@@ -576,10 +578,12 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     // Draw strength
     if (node?.properties?.showStrengthControls !== false) {
       const strengthY = (rowHeight - 20) / 2;
-      ctx.fillStyle = this.value.enabled ? "#FF9800" : "#666"; ctx.beginPath();
-      ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
-      ctx.fill();
-      ctx.fillStyle = this.value.enabled ? "#fff" : "#ddd"; ctx.textAlign = "center"; ctx.font = "12px Arial";
+    // Neutral strength pill with subtle border
+    ctx.fillStyle = this.value.enabled ? "#3a3a3a" : "#2a2a2a"; ctx.beginPath();
+    ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
+    ctx.fill();
+    ctx.strokeStyle = "#4a4a4a"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = this.value.enabled ? "#e5e5e5" : "#bdbdbd"; ctx.textAlign = "center"; ctx.font = "12px Arial";
       ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
       this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
     } else {

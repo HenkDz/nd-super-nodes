@@ -762,25 +762,27 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     let posX = margin;
     ctx.save();
     const gradient = ctx.createLinearGradient(0, posY, 0, posY + height);
-    gradient.addColorStop(0, "#3a3a3a");
-    gradient.addColorStop(1, "#2a2a2a");
+    gradient.addColorStop(0, "#2b2b2b");
+    gradient.addColorStop(1, "#232323");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, posY, w, height);
-    ctx.strokeStyle = "#555";
+    ctx.strokeStyle = "#3a3a3a";
     ctx.lineWidth = 1;
     ctx.strokeRect(0, posY, w, height);
     const midY = posY + height / 2;
     ctx.font = "11px 'Segoe UI', Arial, sans-serif";
     ctx.textBaseline = "middle";
     const drawButton = (x, width, color, text, icon) => {
-      ctx.fillStyle = color;
+      // Use a neutral, subtle button background regardless of color argument
+      ctx.fillStyle = "#2a2a2a";
       ctx.beginPath();
       ctx.roundRect(x, posY + (height - buttonHeight) / 2, width, buttonHeight, 3);
       ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.strokeStyle = "#3f3f3f";
       ctx.lineWidth = 1;
       ctx.stroke();
-      ctx.fillStyle = "#fff";
+      // Text/icon in a muted tone
+      ctx.fillStyle = "#e0e0e0";
       ctx.textAlign = "center";
       const textX = x + width / 2;
       {
@@ -790,11 +792,11 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     const allState = this.getAllLorasState(node);
     const availableWidth = w - margin * 2;
     const buttons = [
-      { id: "toggleAll", color: allState ? "#4CAF50" : "#666", text: "Toggle All", shortText: "Toggle", icon: "⏯️", priority: 1 },
-      { id: "addLora", color: "#2196F3", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
-      { id: "saveTemplate", color: "#FF9800", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
-      { id: "loadTemplate", color: "#9C27B0", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
-      { id: "settings", color: "#607D8B", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
+      { id: "toggleAll", color: "#2a2a2a", text: allState ? "Disable All" : "Enable All", shortText: allState ? "Disable" : "Enable", icon: "⏯️", priority: 1 },
+      { id: "addLora", color: "#2a2a2a", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
+      { id: "saveTemplate", color: "#2a2a2a", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
+      { id: "loadTemplate", color: "#2a2a2a", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
+      { id: "settings", color: "#2a2a2a", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
     ];
     const totalSpacing = buttonSpacing * (buttons.length - 1);
     const buttonWidth = Math.max(40, (availableWidth - totalSpacing) / buttons.length);
@@ -1078,11 +1080,14 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     if (((_e = node == null ? void 0 : node.properties) == null ? void 0 : _e.enableTags) && ((_f = node == null ? void 0 : node.properties) == null ? void 0 : _f.showTagChip) !== false) {
       const iconSize = 20;
       const iconY = posY + Math.floor((rowHeight - iconSize) / 2);
-      ctx.fillStyle = this.value.enabled ? "#3d5afe" : "#555";
+      ctx.fillStyle = this.value.enabled ? "#333" : "#2a2a2a";
       ctx.beginPath();
       ctx.roundRect(posX, iconY, iconSize, iconSize, 2);
       ctx.fill();
-      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = "#ddd";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.font = "12px Arial";
@@ -1185,11 +1190,16 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     }
     if (((_h = node == null ? void 0 : node.properties) == null ? void 0 : _h.showStrengthControls) !== false) {
       const strengthY = (rowHeight - 20) / 2;
-      ctx.fillStyle = this.value.enabled ? "#FF9800" : "#666";
+      // Neutral strength pill: subtle accent when enabled
+      ctx.fillStyle = this.value.enabled ? "#3a3a3a" : "#2a2a2a";
       ctx.beginPath();
       ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
       ctx.fill();
-      ctx.fillStyle = this.value.enabled ? "#fff" : "#ddd";
+      // Border for definition
+      ctx.strokeStyle = "#4a4a4a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = this.value.enabled ? "#e5e5e5" : "#bdbdbd";
       ctx.textAlign = "center";
       ctx.font = "12px Arial";
       ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
