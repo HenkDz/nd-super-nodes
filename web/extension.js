@@ -584,16 +584,39 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
       return true;
     };
     this.onSaveTemplateDown = (event, pos, node) => {
-      SuperLoraNode.showInlineText(event, "My LoRA Set", (templateName) => {
-        if (templateName && templateName.trim()) {
+      SuperLoraNode.showNameOverlay({
+        title: "Save Template",
+        placeholder: "Template name...",
+        initial: "My LoRA Set",
+        submitLabel: "Save",
+        onCommit: async (templateName) => {
+          const name = (templateName || "").trim();
+          if (!name) {
+            SuperLoraNode.showToast("Please enter a template name", "warning");
+            return;
+          }
           const configs = SuperLoraNode.getLoraConfigs(node);
-          SuperLoraNode.templateService.saveTemplate(templateName.trim(), configs).then((success) => {
-            if (success) {
-              SuperLoraNode.showToast(`Template "${templateName.trim()}" saved successfully!`, "success");
-            } else {
-              SuperLoraNode.showToast("Failed to save template", "error");
+          const validConfigs = configs.filter((config) => config.lora && config.lora !== "None");
+          if (validConfigs.length === 0) {
+            SuperLoraNode.showToast("⚠️ No valid LoRAs to save in template", "warning");
+            return;
+          }
+          try {
+            const exists = await SuperLoraNode.templateService.templateExists(name);
+            if (exists) {
+              SuperLoraNode.showToast(`⚠️ Template "${name}" already exists. Choose a different name.`, "warning");
+              return;
             }
-          });
+            const success = await SuperLoraNode.templateService.saveTemplate(name, validConfigs);
+            if (success) {
+              SuperLoraNode.showToast(`✅ Template "${name}" saved successfully!`, "success");
+            } else {
+              SuperLoraNode.showToast("❌ Failed to save template. Please try again.", "error");
+            }
+          } catch (error) {
+            console.error("Template save error:", error);
+            SuperLoraNode.showToast("❌ Error saving template. Check console for details.", "error");
+          }
         }
       });
       return true;
@@ -1251,91 +1274,35 @@ const _SuperLoraNode = class _SuperLoraNode {
     return false;
   }
   /**
-   * Show LoRA selector dialog
+   * Show LoRA selector dialog with enhanced search functionality
    */
   static async showLoraSelector(node, widget, event) {
     try {
-      let availableLoras = [];
-      try {
-        const response = await fetch("/object_info");
-        const objectInfo = await response.json();
-        const loraLoader = objectInfo["LoraLoader"];
-        if (loraLoader && loraLoader.input && loraLoader.input.required && loraLoader.input.required.lora_name) {
-          availableLoras = loraLoader.input.required.lora_name[0] || [];
-        }
-      } catch (fetchError) {
-        console.warn("Could not fetch LoRAs from API, using fallback:", fetchError);
-        availableLoras = [
-          "character_v1.safetensors",
-          "style_anime.safetensors",
-          "lighting_fix.safetensors",
-          "realistic_skin.safetensors",
-          "detailed_eyes.safetensors"
-        ];
-      }
-      if (availableLoras.length === 0) {
-        this.showToast("No LoRAs found", "warning");
-        return;
-      }
+      const availableLoras = await _SuperLoraNode.loraService.getAvailableLoras();
       const usedLoras = this.getUsedLoras(node);
-      const unusedLoras = availableLoras.filter((lora) => !usedLoras.has(lora));
-      if (unusedLoras.length === 0) {
-        this.showToast("All available LoRAs are already added", "warning");
-        return;
-      }
-      const searchItem = {
-        content: `🔍 Search (${unusedLoras.length} LoRAs)...`,
-        callback: () => {
-          const searchTerm = prompt("Search LoRAs:", "");
-          if (searchTerm && searchTerm.trim()) {
-            const filtered = unusedLoras.filter(
-              (lora) => lora.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-            if (filtered.length === 0) {
-              this.showToast("No LoRAs found matching search", "warning");
-              return;
-            }
-            const searchResults = filtered.slice(0, 20).map((lora) => ({
-              content: lora.replace(/\.(safetensors|ckpt|pt)$/, ""),
-              callback: () => {
-                if (widget) {
-                  widget.setLora(lora);
-                } else {
-                  this.addLoraWidget(node, { lora });
-                }
-                node.setDirtyCanvas(true, true);
-              }
-            }));
-            new LiteGraph.ContextMenu(searchResults, {
-              title: `Search Results (${filtered.length})`,
-              event
-            });
+      const items = availableLoras.map((name) => ({
+        id: name,
+        label: name.replace(/\.(safetensors|ckpt|pt)$/, ""),
+        disabled: usedLoras.has(name)
+      }));
+      this.showSearchOverlay({
+        title: "Add LoRA",
+        placeholder: "Search LoRAs...",
+        items,
+        onChoose: (id) => {
+          if (this.isDuplicateLora(node, id)) {
+            this.showToast("⚠️ Already added to the list", "warning");
+            return;
           }
-        }
-      };
-      const menuItems = [searchItem, null];
-      menuItems.push(...unusedLoras.slice(0, 10).map((lora) => ({
-        content: lora.replace(/\.(safetensors|ckpt|pt)$/, ""),
-        callback: () => {
           if (widget) {
-            widget.setLora(lora);
+            widget.setLora(id);
+            this.showToast("✅ LoRA updated", "success");
           } else {
-            this.addLoraWidget(node, { lora });
+            this.addLoraWidget(node, { lora: id });
+            this.showToast("✅ LoRA added", "success");
           }
           node.setDirtyCanvas(true, true);
         }
-      })));
-      if (unusedLoras.length > 10) {
-        menuItems.push(null, {
-          content: `... and ${unusedLoras.length - 10} more (use search)`,
-          callback: () => {
-            this.showToast("Use search to find more LoRAs", "success");
-          }
-        });
-      }
-      new LiteGraph.ContextMenu(menuItems, {
-        title: "Select LoRA",
-        event
       });
     } catch (error) {
       console.error("Failed to show LoRA selector:", error);
@@ -1426,31 +1393,38 @@ const _SuperLoraNode = class _SuperLoraNode {
     }
   }
   /**
-   * Show load template dialog
+   * Show load template dialog with enhanced UI
    */
   static async showLoadTemplateDialog(node, event) {
     try {
       const templateNames = await this.templateService.getTemplateNames();
       if (templateNames.length === 0) {
-        this.showToast("No templates available", "warning");
+        this.showToast("📁 No templates available. Create one first!", "info");
         return;
       }
-      const menuItems = templateNames.map((name) => ({
-        content: name,
-        callback: async () => {
-          const template = await this.templateService.loadTemplate(name);
-          if (template) {
-            this.loadTemplate(node, template.loras);
-            this.showToast(`Template "${name}" loaded successfully!`, "success");
-          } else {
-            this.showToast("Failed to load template", "error");
+      const items = templateNames.map((name) => ({ id: name, label: name }));
+      this.showSearchOverlay({
+        title: "Load Template",
+        placeholder: "Search templates...",
+        items,
+        onChoose: async (name) => {
+          try {
+            const template = await this.templateService.loadTemplate(name);
+            if (template) {
+              this.loadTemplate(node, template);
+              this.showToast(`✅ Template "${name}" loaded successfully!`, "success");
+            } else {
+              this.showToast(`❌ Failed to load template "${name}". It may be corrupted.`, "error");
+            }
+          } catch (error) {
+            console.error(`Template load error for "${name}":`, error);
+            this.showToast(`❌ Error loading template "${name}". Check console for details.`, "error");
           }
         }
-      }));
-      new LiteGraph.ContextMenu(menuItems, { title: "Load Template", event });
+      });
     } catch (error) {
       console.error("Failed to show template selector:", error);
-      this.showToast("Error loading templates", "error");
+      this.showToast("❌ Error loading templates. Check console for details.", "error");
     }
   }
   /**
@@ -1517,6 +1491,13 @@ const _SuperLoraNode = class _SuperLoraNode {
     return new Set(
       node.customWidgets.filter((w) => w instanceof SuperLoraWidget).map((w) => w.value.lora).filter((lora) => lora && lora !== "None")
     );
+  }
+  /**
+   * Check if a LoRA is already used in the node
+   */
+  static isDuplicateLora(node, loraName) {
+    const usedLoras = this.getUsedLoras(node);
+    return usedLoras.has(loraName);
   }
   /**
    * Get existing tags
@@ -1635,34 +1616,47 @@ const _SuperLoraNode = class _SuperLoraNode {
     return executionData;
   }
   /**
-   * Show toast notification
+   * Show toast notification with enhanced styling
    */
-  static showToast(message, type = "success") {
+  static showToast(message, type = "info") {
     console.log(`Super LoRA Loader [${type}]: ${message}`);
+    const colors = {
+      success: "#28a745",
+      warning: "#ffc107",
+      error: "#dc3545",
+      info: "#17a2b8"
+    };
     const toast = document.createElement("div");
     toast.style.cssText = `
       position: fixed;
       top: 20px;
       right: 20px;
-      background: ${type === "error" ? "#dc3545" : type === "warning" ? "#ffc107" : "#28a745"};
+      background: ${colors[type]};
       color: white;
-      padding: 12px 20px;
-      border-radius: 4px;
+      padding: 14px 20px;
+      border-radius: 6px;
       z-index: 10000;
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Arial, sans-serif;
       font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       opacity: 0;
-      transition: opacity 0.3s ease;
+      transition: all 0.3s ease;
+      max-width: 400px;
+      word-wrap: break-word;
     `;
+    toast.style.borderLeft = "4px solid rgba(255,255,255,0.3)";
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
     }, 10);
     setTimeout(() => {
       toast.style.opacity = "0";
+      toast.style.transform = "translateY(-10px)";
       setTimeout(() => toast.remove(), 300);
-    }, 3e3);
+    }, type === "error" ? 5e3 : 3e3);
   }
   // Inline editors for better UX
   static showInlineNumber(event, initial, onCommit) {
@@ -1735,8 +1729,166 @@ const _SuperLoraNode = class _SuperLoraNode {
     input.focus();
     input.select();
   }
+  // Overlay utilities
+  static showSearchOverlay(opts) {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 2147483600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(2px);
+    `;
+    const panel = document.createElement("div");
+    panel.style.cssText = `
+      width: 560px;
+      max-height: 70vh;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    `;
+    const header = document.createElement("div");
+    header.textContent = opts.title;
+    header.style.cssText = `
+      padding: 12px 14px;
+      font-weight: 600;
+      border-bottom: 1px solid #444;
+      background: #2a2a2a;
+    `;
+    const search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = opts.placeholder;
+    search.style.cssText = `
+      margin: 10px 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      color: #fff;
+      outline: none;
+    `;
+    const listWrap = document.createElement("div");
+    listWrap.style.cssText = `
+      overflow: auto;
+      padding: 6px 4px 10px 4px;
+    `;
+    const list = document.createElement("div");
+    list.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0 8px 8px 8px;
+    `;
+    const empty = document.createElement("div");
+    empty.textContent = "No results";
+    empty.style.cssText = "padding: 12px; color: #aaa; display: none;";
+    const close = () => overlay.remove();
+    const render = (term) => {
+      list.innerHTML = "";
+      const q = (term || "").trim().toLowerCase();
+      const filtered = q ? opts.items.filter((i) => i.label.toLowerCase().includes(q)) : opts.items;
+      empty.style.display = filtered.length ? "none" : "block";
+      const maxToShow = Math.min(2e3, filtered.length);
+      filtered.slice(0, maxToShow).forEach((i) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.textContent = i.label + (i.disabled ? "  (added)" : "");
+        row.disabled = !!i.disabled;
+        row.style.cssText = `
+          text-align: left;
+          padding: 10px 12px;
+          background: ${i.disabled ? "#2a2a2a" : "#252525"};
+          color: ${i.disabled ? "#888" : "#fff"};
+          border: 1px solid #3a3a3a;
+          border-radius: 6px;
+          cursor: ${i.disabled ? "not-allowed" : "pointer"};
+        `;
+        row.addEventListener("click", () => {
+          if (!i.disabled) {
+            opts.onChoose(i.id);
+            close();
+          }
+        });
+        list.appendChild(row);
+      });
+    };
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener("keydown", function onKey(e) {
+      if (e.key === "Escape") {
+        close();
+        document.removeEventListener("keydown", onKey);
+      }
+    });
+    listWrap.appendChild(empty);
+    listWrap.appendChild(list);
+    panel.appendChild(header);
+    panel.appendChild(search);
+    panel.appendChild(listWrap);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    search.addEventListener("input", () => render(search.value));
+    setTimeout(() => {
+      search.focus();
+      render("");
+    }, 0);
+  }
+  static showNameOverlay(opts) {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 2147483600; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px);`;
+    const panel = document.createElement("div");
+    panel.style.cssText = `width: 420px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; box-shadow: 0 12px 30px rgba(0,0,0,0.4); overflow: hidden;`;
+    const header = document.createElement("div");
+    header.textContent = opts.title;
+    header.style.cssText = `padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #444; background: #2a2a2a;`;
+    const form = document.createElement("form");
+    form.style.cssText = `display: flex; gap: 8px; padding: 14px;`;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = opts.placeholder;
+    input.value = opts.initial || "";
+    input.style.cssText = `flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #fff; outline: none;`;
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = opts.submitLabel || "Save";
+    submit.style.cssText = `padding: 10px 14px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; border-radius: 6px; cursor: pointer;`;
+    const close = () => overlay.remove();
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      opts.onCommit(input.value);
+      close();
+    });
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    document.addEventListener("keydown", function onKey(e) {
+      if (e.key === "Escape") {
+        close();
+        document.removeEventListener("keydown", onKey);
+      }
+    });
+    form.appendChild(input);
+    form.appendChild(submit);
+    panel.appendChild(header);
+    panel.appendChild(form);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    setTimeout(() => input.focus(), 0);
+  }
 };
 _SuperLoraNode.NODE_WIDGET_TOP_OFFSET = 64;
+_SuperLoraNode.loraService = LoraService.getInstance();
+_SuperLoraNode.templateService = TemplateService.getInstance();
 let SuperLoraNode = _SuperLoraNode;
 const EXTENSION_NAME = "SuperLoraLoader";
 const NODE_TYPE = "SuperLoraLoader";
