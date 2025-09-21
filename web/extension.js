@@ -1,0 +1,1861 @@
+import { app } from "/scripts/app.js";
+class LoraService {
+  constructor() {
+    this.availableLoras = [];
+    this.loraCache = /* @__PURE__ */ new Map();
+  }
+  static getInstance() {
+    if (!LoraService.instance) {
+      LoraService.instance = new LoraService();
+    }
+    return LoraService.instance;
+  }
+  /**
+   * Initialize the service and load available LoRAs
+   */
+  async initialize() {
+    try {
+      await this.refreshLoraList();
+    } catch (error) {
+      console.error("Super LoRA Loader: Failed to initialize LoRA service:", error);
+    }
+  }
+  /**
+   * Get list of available LoRA files
+   */
+  async getAvailableLoras() {
+    if (this.availableLoras.length === 0) {
+      await this.refreshLoraList();
+    }
+    return this.availableLoras;
+  }
+  /**
+   * Refresh the list of available LoRAs from the backend
+   */
+  async refreshLoraList() {
+    try {
+      const response = await fetch("/object_info");
+      const data = await response.json();
+      const loraLoader = data.LoraLoader;
+      if (loraLoader && loraLoader.input && loraLoader.input.required && loraLoader.input.required.lora_name) {
+        this.availableLoras = loraLoader.input.required.lora_name[0] || [];
+      } else {
+        const folderResponse = await fetch("/api/v1/folder_paths");
+        if (folderResponse.ok) {
+          const folderData = await folderResponse.json();
+          this.availableLoras = folderData.loras || [];
+        }
+      }
+      console.log(`Super LoRA Loader: Found ${this.availableLoras.length} LoRAs`);
+    } catch (error) {
+      console.error("Super LoRA Loader: Failed to refresh LoRA list:", error);
+      this.availableLoras = [];
+    }
+  }
+  /**
+   * Create a new LoRA configuration with defaults
+   */
+  createLoraConfig(loraName = "None") {
+    return {
+      lora: loraName,
+      enabled: true,
+      strength_model: 1,
+      strength_clip: 1,
+      trigger_word: "",
+      tag: "General",
+      auto_populated: false
+    };
+  }
+  /**
+   * Validate a LoRA configuration
+   */
+  validateLoraConfig(config) {
+    if (!config || typeof config !== "object") {
+      return false;
+    }
+    if (typeof config.lora !== "string" || typeof config.enabled !== "boolean") {
+      return false;
+    }
+    const strengthModel = Number(config.strength_model);
+    const strengthClip = Number(config.strength_clip);
+    if (isNaN(strengthModel) || isNaN(strengthClip)) {
+      return false;
+    }
+    if (strengthModel < 0 || strengthModel > 2 || strengthClip < 0 || strengthClip > 2) {
+      return false;
+    }
+    return true;
+  }
+  /**
+   * Check if a LoRA is already in the configuration list
+   */
+  isDuplicateLora(configs, loraName) {
+    return configs.some((config) => config.lora === loraName && loraName !== "None");
+  }
+  /**
+   * Sort LoRA configurations by tag and name
+   */
+  sortLoraConfigs(configs) {
+    return [...configs].sort((a, b) => {
+      if (a.tag !== b.tag) {
+        if (a.tag === "General") return -1;
+        if (b.tag === "General") return 1;
+        return a.tag.localeCompare(b.tag);
+      }
+      return a.lora.localeCompare(b.lora);
+    });
+  }
+  /**
+   * Group LoRA configurations by tag
+   */
+  groupLorasByTag(configs) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const config of configs) {
+      const tag = config.tag || "General";
+      if (!groups.has(tag)) {
+        groups.set(tag, []);
+      }
+      groups.get(tag).push(config);
+    }
+    return groups;
+  }
+  /**
+   * Get available tags from a list of LoRA configurations
+   */
+  getAvailableTags(configs) {
+    const tags = /* @__PURE__ */ new Set();
+    for (const config of configs) {
+      tags.add(config.tag || "General");
+    }
+    return Array.from(tags).sort((a, b) => {
+      if (a === "General") return -1;
+      if (b === "General") return 1;
+      return a.localeCompare(b);
+    });
+  }
+  /**
+   * Get common tag suggestions
+   */
+  getCommonTags() {
+    return [
+      "General",
+      "Character",
+      "Style",
+      "Quality",
+      "Effect",
+      "Background",
+      "Clothing",
+      "Pose",
+      "Lighting"
+    ];
+  }
+  /**
+   * Convert LoRA configs to backend format
+   */
+  convertToBackendFormat(configs) {
+    const result = {};
+    configs.forEach((config, index) => {
+      if (config.lora && config.lora !== "None") {
+        const key = `lora_${index + 1}`;
+        result[key] = {
+          lora: config.lora,
+          enabled: config.enabled,
+          strength_model: config.strength_model,
+          strength_clip: config.strength_clip,
+          trigger_word: config.trigger_word || "",
+          tag: config.tag || "General"
+        };
+      }
+    });
+    return result;
+  }
+  /**
+   * Extract trigger words from all enabled LoRAs
+   */
+  extractTriggerWords(configs) {
+    const triggerWords = [];
+    for (const config of configs) {
+      if (config.enabled && config.trigger_word && config.trigger_word.trim()) {
+        triggerWords.push(config.trigger_word.trim());
+      }
+    }
+    return triggerWords.join(", ");
+  }
+}
+class TemplateService {
+  constructor() {
+    this.templates = [];
+    this.isLoaded = false;
+  }
+  static getInstance() {
+    if (!TemplateService.instance) {
+      TemplateService.instance = new TemplateService();
+    }
+    return TemplateService.instance;
+  }
+  /**
+   * Initialize the template service
+   */
+  async initialize() {
+    if (!this.isLoaded) {
+      await this.loadTemplates();
+    }
+  }
+  /**
+   * Load templates from backend
+   */
+  async loadTemplates() {
+    try {
+      const response = await fetch("/super_lora/templates", {
+        method: "GET"
+      });
+      if (response.ok) {
+        const data = await response.json();
+        this.templates = data.templates || [];
+        this.isLoaded = true;
+        console.log(`Super LoRA Loader: Loaded ${this.templates.length} templates`);
+      } else {
+        console.warn("Super LoRA Loader: Failed to load templates:", response.statusText);
+        this.templates = [];
+        this.isLoaded = true;
+      }
+    } catch (error) {
+      console.error("Super LoRA Loader: Error loading templates:", error);
+      this.templates = [];
+      this.isLoaded = true;
+    }
+  }
+  /**
+   * Get all available templates
+   */
+  async getTemplates() {
+    if (!this.isLoaded) {
+      await this.loadTemplates();
+    }
+    return [...this.templates];
+  }
+  /**
+   * Save a new template
+   */
+  async saveTemplate(name, loraConfigs) {
+    try {
+      const validConfigs = loraConfigs.filter(
+        (config) => config.lora && config.lora !== "None"
+      );
+      if (validConfigs.length === 0) {
+        throw new Error("No valid LoRA configurations to save");
+      }
+      const template = {
+        name,
+        version: "1.0",
+        loras: validConfigs
+      };
+      const response = await fetch("/super_lora/templates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(template)
+      });
+      if (response.ok) {
+        await this.loadTemplates();
+        console.log(`Super LoRA Loader: Template "${name}" saved successfully`);
+        return true;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(`Super LoRA Loader: Failed to save template "${name}":`, error);
+      return false;
+    }
+  }
+  /**
+   * Load a template by name
+   */
+  async loadTemplate(name) {
+    try {
+      const templates = await this.getTemplates();
+      const template = templates.find((t) => t.name === name);
+      if (!template) {
+        console.warn(`Super LoRA Loader: Template "${name}" not found`);
+        return null;
+      }
+      const validConfigs = template.loras.filter((config) => this.validateLoraConfig(config));
+      if (validConfigs.length !== template.loras.length) {
+        console.warn(`Super LoRA Loader: Some LoRA configs in template "${name}" are invalid`);
+      }
+      console.log(`Super LoRA Loader: Loaded template "${name}" with ${validConfigs.length} LoRAs`);
+      return validConfigs;
+    } catch (error) {
+      console.error(`Super LoRA Loader: Failed to load template "${name}":`, error);
+      return null;
+    }
+  }
+  /**
+   * Delete a template
+   */
+  async deleteTemplate(name) {
+    try {
+      const response = await fetch("/super_lora/templates", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name })
+      });
+      if (response.ok) {
+        this.templates = this.templates.filter((t) => t.name !== name);
+        console.log(`Super LoRA Loader: Template "${name}" deleted successfully`);
+        return true;
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(`Super LoRA Loader: Failed to delete template "${name}":`, error);
+      return false;
+    }
+  }
+  /**
+   * Check if a template name already exists
+   */
+  async templateExists(name) {
+    const templates = await this.getTemplates();
+    return templates.some((t) => t.name === name);
+  }
+  /**
+   * Get template names for UI selection
+   */
+  async getTemplateNames() {
+    const templates = await this.getTemplates();
+    return templates.map((t) => t.name).sort();
+  }
+  /**
+   * Validate a LoRA configuration
+   */
+  validateLoraConfig(config) {
+    if (!config || typeof config !== "object") {
+      return false;
+    }
+    if (!config.lora || typeof config.enabled !== "boolean") {
+      return false;
+    }
+    const strengthModel = Number(config.strength_model);
+    const strengthClip = Number(config.strength_clip);
+    if (isNaN(strengthModel) || isNaN(strengthClip)) {
+      return false;
+    }
+    return true;
+  }
+  /**
+   * Export template to JSON string
+   */
+  async exportTemplate(name) {
+    try {
+      const templates = await this.getTemplates();
+      const template = templates.find((t) => t.name === name);
+      if (!template) {
+        return null;
+      }
+      return JSON.stringify(template, null, 2);
+    } catch (error) {
+      console.error(`Super LoRA Loader: Failed to export template "${name}":`, error);
+      return null;
+    }
+  }
+  /**
+   * Import template from JSON string
+   */
+  async importTemplate(jsonString) {
+    try {
+      const template = JSON.parse(jsonString);
+      if (!template.name || !template.loras || !Array.isArray(template.loras)) {
+        throw new Error("Invalid template format");
+      }
+      if (await this.templateExists(template.name)) {
+        throw new Error(`Template "${template.name}" already exists`);
+      }
+      return await this.saveTemplate(template.name, template.loras);
+    } catch (error) {
+      console.error("Super LoRA Loader: Failed to import template:", error);
+      return false;
+    }
+  }
+}
+class CivitAiService {
+  constructor() {
+    this.cache = /* @__PURE__ */ new Map();
+    this.pendingRequests = /* @__PURE__ */ new Map();
+  }
+  static getInstance() {
+    if (!CivitAiService.instance) {
+      CivitAiService.instance = new CivitAiService();
+    }
+    return CivitAiService.instance;
+  }
+  /**
+   * Get trigger words for a LoRA file
+   */
+  async getTriggerWords(loraFileName) {
+    try {
+      const modelInfo = await this.getModelInfo(loraFileName);
+      if (!modelInfo) {
+        return [];
+      }
+      return this.extractTriggerWordsFromModelInfo(modelInfo);
+    } catch (error) {
+      console.warn(`Super LoRA Loader: Failed to get trigger words for ${loraFileName}:`, error);
+      return [];
+    }
+  }
+  /**
+   * Get model information from CivitAI
+   */
+  async getModelInfo(loraFileName) {
+    if (this.cache.has(loraFileName)) {
+      return this.cache.get(loraFileName);
+    }
+    if (this.pendingRequests.has(loraFileName)) {
+      return await this.pendingRequests.get(loraFileName);
+    }
+    const requestPromise = this.fetchModelInfo(loraFileName);
+    this.pendingRequests.set(loraFileName, requestPromise);
+    try {
+      const result = await requestPromise;
+      this.pendingRequests.delete(loraFileName);
+      if (result) {
+        this.cache.set(loraFileName, result);
+      }
+      return result;
+    } catch (error) {
+      this.pendingRequests.delete(loraFileName);
+      throw error;
+    }
+  }
+  /**
+   * Fetch model info from backend API
+   */
+  async fetchModelInfo(loraFileName) {
+    try {
+      const response = await fetch("/super_lora/civitai_info", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          lora_filename: loraFileName
+        })
+      });
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (data.error) {
+        console.warn(`Super LoRA Loader: CivitAI API error for ${loraFileName}:`, data.error);
+        return null;
+      }
+      return data;
+    } catch (error) {
+      console.warn(`Super LoRA Loader: Failed to fetch model info for ${loraFileName}:`, error);
+      return null;
+    }
+  }
+  /**
+   * Extract trigger words from CivitAI model info
+   */
+  extractTriggerWordsFromModelInfo(modelInfo) {
+    const triggerWords = [];
+    if (modelInfo.trainedWords && Array.isArray(modelInfo.trainedWords)) {
+      for (const item of modelInfo.trainedWords) {
+        if (typeof item === "string") {
+          triggerWords.push(item);
+        } else if (item && typeof item === "object" && "word" in item) {
+          triggerWords.push(item.word);
+        }
+      }
+    }
+    return triggerWords.slice(0, 3);
+  }
+  /**
+   * Clear the cache
+   */
+  clearCache() {
+    this.cache.clear();
+  }
+  /**
+   * Get cache size for debugging
+   */
+  getCacheSize() {
+    return this.cache.size;
+  }
+  /**
+   * Check if auto-fetch is enabled in settings
+   */
+  isAutoFetchEnabled() {
+    try {
+      const app2 = window.app;
+      if (app2 && app2.ui && app2.ui.settings) {
+        return app2.ui.settings.getSettingValue("superLora.autoFetchTriggerWords", true);
+      }
+    } catch (error) {
+      console.warn("Super LoRA Loader: Failed to check auto-fetch setting:", error);
+    }
+    return true;
+  }
+  /**
+   * Auto-populate trigger words for a LoRA if enabled
+   */
+  async autoPopulateTriggerWords(loraFileName) {
+    if (!this.isAutoFetchEnabled() || !loraFileName || loraFileName === "None") {
+      return "";
+    }
+    try {
+      const triggerWords = await this.getTriggerWords(loraFileName);
+      return triggerWords.length > 0 ? triggerWords[0] : "";
+    } catch (error) {
+      console.warn(`Super LoRA Loader: Auto-populate failed for ${loraFileName}:`, error);
+      return "";
+    }
+  }
+}
+const LiteGraph = window.LiteGraph;
+class SuperLoraBaseWidget {
+  constructor(name) {
+    this.name = name;
+    this.type = "custom";
+    this.value = {};
+    this.hitAreas = {};
+  }
+  draw(ctx, node, w, posY, height) {
+  }
+  onMouseDown(event, pos, node) {
+    return this.handleHitAreas(event, pos, node, "onDown");
+  }
+  onClick(event, pos, node) {
+    return this.handleHitAreas(event, pos, node, "onClick");
+  }
+  handleHitAreas(event, pos, node, handler) {
+    console.log(`[${this.constructor.name}] Click at: [${pos[0]}, ${pos[1]}], Handler: ${handler}`);
+    const entries = Object.entries(this.hitAreas).sort((a, b) => {
+      const pa = a[1] && a[1].priority || 0;
+      const pb = b[1] && b[1].priority || 0;
+      return pb - pa;
+    });
+    for (const [key, area] of entries) {
+      const bounds = area.bounds;
+      console.log(`  Checking ${key}: bounds=${bounds}`);
+      if (bounds && bounds.length >= 4 && this.isInBounds(pos, bounds)) {
+        const fn = area[handler] || (handler === "onDown" ? area.onClick : area.onDown);
+        if (fn) {
+          console.log(`  ✓ HIT: ${key} - calling ${fn === area[handler] ? handler : handler === "onDown" ? "onClick" : "onDown"}`);
+          return fn.call(this, event, pos, node);
+        }
+      }
+    }
+    console.log("  ✗ No hit areas matched");
+    return false;
+  }
+  isInBounds(pos, bounds) {
+    if (bounds.length < 4) return false;
+    const [x, y, width, height] = bounds;
+    return pos[0] >= x && pos[0] <= x + width && pos[1] >= y && pos[1] <= y + height;
+  }
+  computeSize() {
+    return [200, 25];
+  }
+}
+class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
+  constructor() {
+    super("SuperLoraHeaderWidget");
+    this.onToggleAllDown = (event, pos, node) => {
+      const allState = this.getAllLorasState(node);
+      if (!node.customWidgets) return true;
+      const loraWidgets = node.customWidgets.filter((w) => w instanceof SuperLoraWidget);
+      loraWidgets.forEach((w) => w.value.enabled = !allState);
+      node.setDirtyCanvas(true, true);
+      return true;
+    };
+    this.onAddLoraDown = (event, pos, node) => {
+      SuperLoraNode.showLoraSelector(node, void 0, event);
+      return true;
+    };
+    this.onSaveTemplateDown = (event, pos, node) => {
+      SuperLoraNode.showInlineText(event, "My LoRA Set", (templateName) => {
+        if (templateName && templateName.trim()) {
+          const configs = SuperLoraNode.getLoraConfigs(node);
+          SuperLoraNode.templateService.saveTemplate(templateName.trim(), configs).then((success) => {
+            if (success) {
+              SuperLoraNode.showToast(`Template "${templateName.trim()}" saved successfully!`, "success");
+            } else {
+              SuperLoraNode.showToast("Failed to save template", "error");
+            }
+          });
+        }
+      });
+      return true;
+    };
+    this.onLoadTemplateDown = (event, pos, node) => {
+      SuperLoraNode.showLoadTemplateDialog(node, event);
+      return true;
+    };
+    this.onSettingsDown = (event, pos, node) => {
+      SuperLoraNode.showSettingsDialog(node, event);
+      return true;
+    };
+    this.value = { type: "SuperLoraHeaderWidget" };
+    this.hitAreas = {
+      toggleAll: { bounds: [0, 0], onDown: this.onToggleAllDown },
+      addLora: { bounds: [0, 0], onDown: this.onAddLoraDown },
+      saveTemplate: { bounds: [0, 0], onDown: this.onSaveTemplateDown },
+      loadTemplate: { bounds: [0, 0], onDown: this.onLoadTemplateDown },
+      settings: { bounds: [0, 0], onDown: this.onSettingsDown }
+    };
+  }
+  draw(ctx, node, w, posY, height) {
+    const margin = 8;
+    const buttonHeight = 22;
+    const buttonSpacing = 6;
+    let posX = margin;
+    ctx.save();
+    const gradient = ctx.createLinearGradient(0, posY, 0, posY + height);
+    gradient.addColorStop(0, "#3a3a3a");
+    gradient.addColorStop(1, "#2a2a2a");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, posY, w, height);
+    ctx.strokeStyle = "#555";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, posY, w, height);
+    const midY = posY + height / 2;
+    ctx.font = "11px 'Segoe UI', Arial, sans-serif";
+    ctx.textBaseline = "middle";
+    const drawButton = (x, width, color, text, icon) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x, posY + (height - buttonHeight) / 2, width, buttonHeight, 3);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.2)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      const textX = x + width / 2;
+      {
+        ctx.fillText(text, textX, midY);
+      }
+    };
+    const allState = this.getAllLorasState(node);
+    const availableWidth = w - margin * 2;
+    const buttons = [
+      { id: "toggleAll", color: allState ? "#4CAF50" : "#666", text: "Toggle All", shortText: "Toggle", icon: "⏯️", priority: 1 },
+      { id: "addLora", color: "#2196F3", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
+      { id: "saveTemplate", color: "#FF9800", text: "Save", shortText: "Save", icon: "💾", priority: 3 },
+      { id: "loadTemplate", color: "#9C27B0", text: "Load", shortText: "Load", icon: "📂", priority: 4 },
+      { id: "settings", color: "#607D8B", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
+    ];
+    const totalSpacing = buttonSpacing * (buttons.length - 1);
+    const buttonWidth = Math.max(40, (availableWidth - totalSpacing) / buttons.length);
+    const useShortText = buttonWidth < 60;
+    const useIconOnly = buttonWidth < 45;
+    buttons.forEach((btn, index) => {
+      let displayText = useIconOnly ? btn.icon : useShortText ? btn.shortText : btn.text;
+      drawButton(posX, buttonWidth, btn.color, displayText);
+      this.hitAreas[btn.id].bounds = [posX, 0, buttonWidth, height];
+      posX += buttonWidth + buttonSpacing;
+    });
+    ctx.restore();
+  }
+  getAllLorasState(node) {
+    if (!node.customWidgets) return false;
+    const loraWidgets = node.customWidgets.filter((w) => w instanceof SuperLoraWidget);
+    return loraWidgets.length > 0 && loraWidgets.every((w) => w.value.enabled);
+  }
+  computeSize() {
+    return [450, 35];
+  }
+}
+class SuperLoraTagWidget extends SuperLoraBaseWidget {
+  constructor(tag) {
+    super(`tag_${tag}`);
+    this.tag = tag;
+    this.onCollapseDown = (event, pos, node) => {
+      this.value.collapsed = !this.value.collapsed;
+      SuperLoraNode.calculateNodeSize(node);
+      node.setDirtyCanvas(true, false);
+      return true;
+    };
+    this.onToggleDown = (event, pos, node) => {
+      const lorasInTag = this.getLorasInTag(node);
+      const allEnabled = lorasInTag.every((w) => w.value.enabled);
+      lorasInTag.forEach((w) => w.value.enabled = !allEnabled);
+      node.setDirtyCanvas(true, false);
+      return true;
+    };
+    this.value = { type: "SuperLoraTagWidget", tag, collapsed: false };
+    this.hitAreas = {
+      toggle: { bounds: [0, 0], onDown: this.onToggleDown },
+      collapse: { bounds: [0, 0], onDown: this.onCollapseDown }
+    };
+  }
+  draw(ctx, node, w, posY, height) {
+    const margin = 10;
+    let posX = margin;
+    ctx.save();
+    ctx.fillStyle = "#3a3a3a";
+    ctx.fillRect(0, posY, w, height);
+    const midY = height / 2;
+    const lorasInTag = this.getLorasInTag(node);
+    const allEnabled = lorasInTag.every((w2) => w2.value.enabled);
+    ctx.fillStyle = "#fff";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(this.value.collapsed ? "▶" : "▼", posX, posY + midY);
+    this.hitAreas.collapse.bounds = [posX, 0, 15, height];
+    posX += 20;
+    ctx.fillStyle = allEnabled ? "#4CAF50" : "#666";
+    ctx.fillRect(posX, posY + 4, 20, height - 8);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(allEnabled ? "✓" : "○", posX + 6, posY + midY);
+    this.hitAreas.toggle.bounds = [posX, 0, 20, height];
+    posX += 30;
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`${this.tag} (${lorasInTag.length})`, posX, posY + midY);
+    ctx.restore();
+  }
+  getLorasInTag(node) {
+    if (!node.customWidgets) return [];
+    return node.customWidgets.filter(
+      (w) => w instanceof SuperLoraWidget && w.value.tag === this.tag
+    );
+  }
+  computeSize() {
+    return [400, 25];
+  }
+  isCollapsed() {
+    return this.value.collapsed;
+  }
+}
+class SuperLoraWidget extends SuperLoraBaseWidget {
+  constructor(name) {
+    super(name);
+    this.onEnabledDown = (event, pos, node) => {
+      this.value.enabled = !this.value.enabled;
+      node.setDirtyCanvas(true, false);
+      return true;
+    };
+    this.onLoraClick = (event, pos, node) => {
+      SuperLoraNode.showLoraSelector(node, this, event);
+      return true;
+    };
+    this.onStrengthClick = (event, pos, node) => {
+      var _a;
+      try {
+        const canvas = (_a = app) == null ? void 0 : _a.canvas;
+        if (canvas == null ? void 0 : canvas.prompt) {
+          canvas.prompt("Model Strength", this.value.strength ?? 1, (v) => {
+            const val = parseFloat(v);
+            if (!Number.isNaN(val)) {
+              this.value.strength = Math.max(-2, Math.min(2, val));
+              node.setDirtyCanvas(true, true);
+            }
+          }, event);
+          return true;
+        }
+      } catch {
+      }
+      return false;
+    };
+    this.onStrengthDownClick = (event, pos, node) => {
+      this.value.strength = Math.max(-2, this.value.strength - 0.1);
+      node.setDirtyCanvas(true, false);
+      return true;
+    };
+    this.onStrengthUpClick = (event, pos, node) => {
+      this.value.strength = Math.min(2, this.value.strength + 0.1);
+      node.setDirtyCanvas(true, false);
+      return true;
+    };
+    this.onMoveUpClick = (event, pos, node) => {
+      const index = node.customWidgets.indexOf(this);
+      if (index > 1) {
+        const temp = node.customWidgets[index];
+        node.customWidgets[index] = node.customWidgets[index - 1];
+        node.customWidgets[index - 1] = temp;
+        node.setDirtyCanvas(true, false);
+      }
+      return true;
+    };
+    this.onMoveDownClick = (event, pos, node) => {
+      const index = node.customWidgets.indexOf(this);
+      if (index < node.customWidgets.length - 1) {
+        const temp = node.customWidgets[index];
+        node.customWidgets[index] = node.customWidgets[index + 1];
+        node.customWidgets[index + 1] = temp;
+        node.setDirtyCanvas(true, false);
+      }
+      return true;
+    };
+    this.onTriggerWordsClick = (event, pos, node) => {
+      var _a;
+      try {
+        const canvas = (_a = app) == null ? void 0 : _a.canvas;
+        if (canvas == null ? void 0 : canvas.prompt) {
+          canvas.prompt("Trigger Words", this.value.triggerWords || "", (v) => {
+            this.value.triggerWords = String(v ?? "");
+            this.value.autoFetched = false;
+            node.setDirtyCanvas(true, true);
+          }, event);
+          return true;
+        }
+      } catch {
+      }
+      return false;
+    };
+    this.onTagClick = (event, pos, node) => {
+      SuperLoraNode.showTagSelector(node, this);
+      return true;
+    };
+    this.onRemoveClick = (event, pos, node) => {
+      SuperLoraNode.removeLoraWidget(node, this);
+      return true;
+    };
+    this.value = {
+      lora: "None",
+      enabled: true,
+      strength: 1,
+      strengthClip: 1,
+      triggerWords: "",
+      tag: "General",
+      autoFetched: false
+    };
+    this.hitAreas = {
+      enabled: { bounds: [0, 0], onDown: this.onEnabledDown, priority: 60 },
+      lora: { bounds: [0, 0], onClick: this.onLoraClick, priority: 10 },
+      strength: { bounds: [0, 0], onClick: this.onStrengthClick, priority: 80 },
+      strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
+      strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
+      triggerWords: { bounds: [0, 0], onClick: this.onTriggerWordsClick, priority: 85 },
+      remove: { bounds: [0, 0], onClick: this.onRemoveClick, priority: 100 },
+      moveUp: { bounds: [0, 0], onClick: this.onMoveUpClick, priority: 70 },
+      moveDown: { bounds: [0, 0], onClick: this.onMoveDownClick, priority: 70 }
+    };
+  }
+  draw(ctx, node, w, posY, height) {
+    var _a;
+    const margin = 8;
+    const rowHeight = 28;
+    ctx.save();
+    const gradient = ctx.createLinearGradient(0, posY, 0, posY + height);
+    gradient.addColorStop(0, this.value.enabled ? "#4a4a4a" : "#2a2a2a");
+    gradient.addColorStop(1, this.value.enabled ? "#3a3a3a" : "#1a1a1a");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(margin, posY + 2, w - margin * 2, height - 4, 6);
+    ctx.fill();
+    ctx.strokeStyle = this.value.enabled ? "#666" : "#444";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    if (!this.value.enabled) {
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fill();
+    }
+    ctx.font = "11px 'Segoe UI', Arial, sans-serif";
+    ctx.textBaseline = "middle";
+    const topPad = ((_a = node.properties) == null ? void 0 : _a.showTriggerWords) ? 4 : Math.max(4, Math.floor((height - rowHeight) / 2));
+    let currentY = posY + topPad;
+    this.drawFirstRow(ctx, node, w, currentY, rowHeight, height);
+    ctx.restore();
+  }
+  drawFirstRow(ctx, node, w, posY, rowHeight, fullHeight) {
+    var _a;
+    const margin = 8;
+    let posX = margin + 6;
+    const midY = rowHeight / 2;
+    const toggleSize = 20;
+    const toggleY = (rowHeight - toggleSize) / 2 - 2;
+    ctx.fillStyle = this.value.enabled ? "#4CAF50" : "#666";
+    ctx.beginPath();
+    ctx.roundRect(posX, posY + toggleY, toggleSize, toggleSize, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "12px Arial";
+    ctx.fillText(this.value.enabled ? "✓" : "", posX + toggleSize / 2, posY + midY);
+    this.hitAreas.enabled.bounds = [posX, 0, toggleSize, fullHeight];
+    posX += toggleSize + 8;
+    const loraWidgets = ((_a = node.customWidgets) == null ? void 0 : _a.filter((w2) => w2 instanceof SuperLoraWidget)) || [];
+    const indexInLoras = loraWidgets.indexOf(this);
+    const lastIndex = loraWidgets.length - 1;
+    const showMoveArrows = loraWidgets.length > 1;
+    const arrowSize = 20;
+    const strengthWidth = 50;
+    const btnSize = 20;
+    const removeSize = 20;
+    const gapSmall = 2;
+    const gap = 8;
+    const rightEdge = node.size[0] - margin;
+    const removeX = rightEdge - removeSize - gap;
+    let cursorX = removeX - gap;
+    const plusX = cursorX - btnSize;
+    cursorX = plusX - gapSmall;
+    const strengthX = cursorX - strengthWidth;
+    cursorX = strengthX - gapSmall;
+    const minusX = cursorX - btnSize;
+    cursorX = minusX - gap;
+    let upX = cursorX - arrowSize;
+    let downX = upX - (arrowSize + 2);
+    if (!showMoveArrows) {
+      upX = downX = -9999;
+    }
+    const loraLeft = posX;
+    const loraMaxRight = showMoveArrows ? downX - gap : minusX - gap;
+    const loraWidth = Math.max(100, loraMaxRight - loraLeft);
+    const showTriggers = !!(node.properties && node.properties.showTriggerWords);
+    const nameWidth = showTriggers ? Math.max(80, Math.floor(loraWidth * 0.6)) : loraWidth;
+    const trigWidth = showTriggers ? loraWidth - nameWidth : 0;
+    ctx.textAlign = "left";
+    ctx.font = "12px 'Segoe UI', Arial, sans-serif";
+    ctx.fillStyle = this.value.enabled ? "#fff" : "#888";
+    const loraText = this.value.lora === "None" ? "Click to select LoRA..." : this.value.lora;
+    const loraDisplay = this.truncateText(ctx, loraText, nameWidth);
+    ctx.fillText(loraDisplay, loraLeft, posY + midY);
+    this.hitAreas.lora.bounds = [loraLeft, 0, nameWidth, fullHeight];
+    const triggerLeft = loraLeft + nameWidth;
+    if (showTriggers && trigWidth > 0) {
+      const hasTrigger = !!(this.value.triggerWords && String(this.value.triggerWords).trim());
+      ctx.textAlign = "right";
+      ctx.font = "10px 'Segoe UI', Arial, sans-serif";
+      if (hasTrigger) {
+        ctx.fillStyle = this.value.enabled ? "#fff" : "#aaa";
+        const trigDisplay = this.truncateText(ctx, String(this.value.triggerWords), trigWidth - 4);
+        ctx.fillText(trigDisplay, triggerLeft + trigWidth - 4, posY + midY);
+      } else {
+        ctx.fillStyle = "#666";
+        const placeholder = "Click to add trigger words...";
+        const phDisplay = this.truncateText(ctx, placeholder, trigWidth - 4);
+        ctx.fillText(phDisplay, triggerLeft + trigWidth - 4, posY + midY);
+      }
+      this.hitAreas.triggerWords.bounds = [triggerLeft, 0, trigWidth, fullHeight];
+    } else {
+      this.hitAreas.triggerWords.bounds = [0, 0, 0, 0];
+    }
+    if (showMoveArrows) {
+      const arrowY = (rowHeight - arrowSize) / 2;
+      const disableDown = indexInLoras === lastIndex;
+      const disableUp = indexInLoras === 0;
+      ctx.globalAlpha = disableDown ? 0.35 : 1;
+      ctx.fillStyle = "#555";
+      ctx.beginPath();
+      ctx.roundRect(downX, posY + arrowY, arrowSize, arrowSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("▼", downX + arrowSize / 2, posY + midY);
+      this.hitAreas.moveDown.bounds = disableDown ? [0, 0, 0, 0] : [downX, 0, arrowSize, fullHeight];
+      ctx.globalAlpha = disableUp ? 0.35 : 1;
+      ctx.fillStyle = "#555";
+      ctx.beginPath();
+      ctx.roundRect(upX, posY + arrowY, arrowSize, arrowSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("▲", upX + arrowSize / 2, posY + midY);
+      this.hitAreas.moveUp.bounds = disableUp ? [0, 0, 0, 0] : [upX, 0, arrowSize, fullHeight];
+      ctx.globalAlpha = 1;
+    } else {
+      this.hitAreas.moveUp.bounds = [0, 0, 0, 0];
+      this.hitAreas.moveDown.bounds = [0, 0, 0, 0];
+    }
+    const btnY = (rowHeight - btnSize) / 2;
+    ctx.fillStyle = "#666";
+    ctx.beginPath();
+    ctx.roundRect(minusX, posY + btnY, btnSize, btnSize, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "12px Arial";
+    ctx.fillText("-", minusX + btnSize / 2, posY + midY);
+    this.hitAreas.strengthDown.bounds = [minusX, 0, btnSize, fullHeight];
+    const strengthY = (rowHeight - 20) / 2;
+    ctx.fillStyle = "#FF9800";
+    ctx.beginPath();
+    ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "12px Arial";
+    ctx.fillText(this.value.strength.toFixed(2), strengthX + strengthWidth / 2, posY + midY);
+    this.hitAreas.strength.bounds = [strengthX, 0, strengthWidth, fullHeight];
+    ctx.fillStyle = "#666";
+    ctx.beginPath();
+    ctx.roundRect(plusX, posY + btnY, btnSize, btnSize, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "12px Arial";
+    ctx.fillText("+", plusX + btnSize / 2, posY + midY);
+    this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
+    const removeY = (rowHeight - removeSize) / 2;
+    ctx.fillStyle = "#f44336";
+    ctx.beginPath();
+    ctx.roundRect(removeX, posY + removeY, removeSize, removeSize, 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "14px Arial";
+    ctx.fillText("✖", removeX + removeSize / 2, posY + midY);
+    this.hitAreas.remove.bounds = [removeX, 0, removeSize, fullHeight];
+  }
+  // drawSecondRow removed in compact single-row layout
+  isCollapsedByTag(node) {
+    if (!node.customWidgets) return false;
+    const tagWidget = node.customWidgets.find(
+      (w) => w instanceof SuperLoraTagWidget && w.tag === this.value.tag
+    );
+    return (tagWidget == null ? void 0 : tagWidget.isCollapsed()) || false;
+  }
+  truncateText(ctx, text, maxWidth) {
+    const metrics = ctx.measureText(text);
+    if (metrics.width <= maxWidth) return text;
+    let truncated = text;
+    while (ctx.measureText(truncated + "...").width > maxWidth && truncated.length > 0) {
+      truncated = truncated.slice(0, -1);
+    }
+    return truncated + "...";
+  }
+  computeSize() {
+    return [450, 50];
+  }
+  setLora(lora) {
+    this.value.lora = lora;
+    if (lora !== "None") {
+      this.fetchTriggerWords();
+    }
+  }
+  async fetchTriggerWords() {
+    try {
+      const words = await SuperLoraNode.civitaiService.getTriggerWords(this.value.lora);
+      if (words.length > 0) {
+        this.value.triggerWords = words.join(", ");
+        this.value.autoFetched = true;
+      }
+    } catch (error) {
+      console.warn("Failed to fetch trigger words:", error);
+    }
+  }
+}
+const _SuperLoraNode = class _SuperLoraNode {
+  static async initialize() {
+    this.loraService = LoraService.getInstance();
+    this.templateService = TemplateService.getInstance();
+    this.civitaiService = CivitAiService.getInstance();
+    await Promise.all([
+      this.loraService.initialize(),
+      this.templateService.initialize()
+    ]);
+  }
+  /**
+   * Set up the node type with custom widgets
+   */
+  static setup(nodeType, nodeData) {
+    const originalNodeCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function() {
+      if (originalNodeCreated) {
+        originalNodeCreated.apply(this, arguments);
+      }
+      _SuperLoraNode.setupAdvancedNode(this);
+    };
+    const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function(ctx) {
+      if (originalOnDrawForeground) {
+        originalOnDrawForeground.call(this, ctx);
+      }
+      _SuperLoraNode.drawCustomWidgets(this, ctx);
+    };
+    const originalOnMouseDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function(event, pos) {
+      if (_SuperLoraNode.handleMouseDown(this, event, pos)) {
+        return true;
+      }
+      return originalOnMouseDown ? originalOnMouseDown.call(this, event, pos) : false;
+    };
+    const originalOnMouseUp = nodeType.prototype.onMouseUp;
+    nodeType.prototype.onMouseUp = function(event, pos) {
+      if (_SuperLoraNode.handleMouseUp(this, event, pos)) {
+        return true;
+      }
+      return originalOnMouseUp ? originalOnMouseUp.call(this, event, pos) : false;
+    };
+    const originalSerialize = nodeType.prototype.serialize;
+    nodeType.prototype.serialize = function() {
+      const data = originalSerialize ? originalSerialize.call(this) : {};
+      data.customWidgets = _SuperLoraNode.serializeCustomWidgets(this);
+      return data;
+    };
+    const originalConfigure = nodeType.prototype.configure;
+    nodeType.prototype.configure = function(data) {
+      if (originalConfigure) {
+        originalConfigure.call(this, data);
+      }
+      if (data.customWidgets) {
+        _SuperLoraNode.deserializeCustomWidgets(this, data.customWidgets);
+      } else {
+        _SuperLoraNode.setupAdvancedNode(this);
+      }
+    };
+    const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
+    nodeType.prototype.getExtraMenuOptions = function(canvas) {
+      const options = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, canvas) : [];
+      options.push(null);
+      options.push({
+        content: "🏷️ Add LoRA",
+        callback: (event) => _SuperLoraNode.showLoraSelector(this, void 0, event)
+      });
+      options.push({
+        content: "⚙️ Settings",
+        callback: (event) => _SuperLoraNode.showSettingsDialog(this)
+      });
+      return options;
+    };
+  }
+  /**
+   * Initialize advanced node with custom widgets
+   */
+  static setupAdvancedNode(node) {
+    console.log("Super LoRA Loader: Setting up advanced node");
+    if (node.customWidgets && node.customWidgets.length > 0) {
+      console.log("Super LoRA Loader: Node already initialized, skipping");
+      return;
+    }
+    node.properties = node.properties || {};
+    node.properties.enableTags = node.properties.enableTags !== false;
+    node.properties.showTriggerWords = node.properties.showTriggerWords !== false;
+    node.properties.showSeparateStrengths = node.properties.showSeparateStrengths || false;
+    node.properties.autoFetchTriggerWords = node.properties.autoFetchTriggerWords !== false;
+    node.customWidgets = node.customWidgets || [];
+    node.customWidgets.push(new SuperLoraHeaderWidget());
+    node.size = [Math.max(node.size[0], 450), Math.max(node.size[1], 100)];
+    console.log("Super LoRA Loader: Advanced node setup complete");
+  }
+  /**
+   * Calculate required node size based on widgets
+   */
+  static calculateNodeSize(node) {
+    if (!node.customWidgets) return;
+    const margin = 5;
+    let currentY = this.NODE_WIDGET_TOP_OFFSET;
+    for (const widget of node.customWidgets) {
+      const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
+      if (isCollapsed) continue;
+      const size = widget.computeSize();
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+      if (height === 0) continue;
+      currentY += height + margin;
+    }
+    const newHeight = Math.max(currentY, 100);
+    const newWidth = Math.max(node.size[0], 450);
+    if (node.size[1] !== newHeight) {
+      node.size[1] = newHeight;
+    }
+    if (node.size[0] !== newWidth) {
+      node.size[0] = newWidth;
+    }
+  }
+  /**
+   * Custom drawing for all widgets
+   */
+  static drawCustomWidgets(node, ctx) {
+    if (!node.customWidgets) return;
+    const margin = 5;
+    let currentY = this.NODE_WIDGET_TOP_OFFSET;
+    for (const widget of node.customWidgets) {
+      const size = widget.computeSize();
+      const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
+      if (size[1] === 0 || isCollapsed) {
+        currentY += size[1] + margin;
+        continue;
+      }
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+      widget.draw(ctx, node, node.size[0], currentY, height);
+      currentY += height + margin;
+    }
+  }
+  /**
+   * Handle mouse interactions
+   */
+  static handleMouseDown(node, event, pos) {
+    return this.handleMouseEvent(node, event, pos, "onMouseDown");
+  }
+  static handleMouseUp(node, event, pos) {
+    return this.handleMouseEvent(node, event, pos, "onClick");
+  }
+  static handleMouseEvent(node, event, pos, handler) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    if (!node.customWidgets) return false;
+    console.log(`[SuperLoraNode] Mouse event: pos=[${pos[0]}, ${pos[1]}], handler=${handler}`);
+    console.log("Node customWidgets:", node.customWidgets.map((w, i) => `${i}:${w.constructor.name}`));
+    try {
+      const rect = (_d = (_c = (_b = (_a = app) == null ? void 0 : _a.canvas) == null ? void 0 : _b.canvas) == null ? void 0 : _c.getBoundingClientRect) == null ? void 0 : _d.call(_c);
+      const ds = (_f = (_e = app) == null ? void 0 : _e.canvas) == null ? void 0 : _f.ds;
+      let sx = event && (event.clientX ?? event.pageX) || null;
+      let sy = event && (event.clientY ?? event.pageY) || null;
+      if ((sx == null || sy == null) && rect && ds) {
+        sx = rect.left + (pos[0] + (((_g = ds.offset) == null ? void 0 : _g[0]) || 0)) * (ds.scale || 1);
+        sy = rect.top + (pos[1] + (((_h = ds.offset) == null ? void 0 : _h[1]) || 0)) * (ds.scale || 1);
+      }
+      if (sx != null && sy != null) {
+        _SuperLoraNode._lastPointerScreen = { x: sx, y: sy };
+      }
+    } catch {
+    }
+    const margin = 5;
+    let currentY = this.NODE_WIDGET_TOP_OFFSET;
+    console.log(`[SuperLoraNode] Starting currentY: ${currentY}`);
+    for (const widget of node.customWidgets) {
+      const size = widget.computeSize();
+      const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
+      if (size[1] === 0 || isCollapsed) {
+        currentY += size[1] + margin;
+        continue;
+      }
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+      const widgetStartY = currentY;
+      const widgetEndY = currentY + height;
+      if (pos[1] >= widgetStartY && pos[1] <= widgetEndY) {
+        console.log(`[SuperLoraNode] ✓ Click within ${widget.constructor.name} bounds`);
+        const localPos = [pos[0], pos[1] - widgetStartY];
+        console.log(`[SuperLoraNode] Local position: [${localPos[0]}, ${localPos[1]}], widgetStartY=${widgetStartY}`);
+        if (widget[handler]) {
+          console.log(`[SuperLoraNode] Calling ${widget.constructor.name}.${handler}()`);
+          if (widget[handler](event, localPos, node)) {
+            console.log(`[SuperLoraNode] ✓ Handler returned true`);
+            return true;
+          } else {
+            console.log(`[SuperLoraNode] ✗ Handler returned false`);
+          }
+        } else {
+          console.log(`[SuperLoraNode] ✗ No ${handler} method on ${widget.constructor.name}`);
+        }
+      } else {
+        console.log(`[SuperLoraNode] ✗ Click outside ${widget.constructor.name} bounds`);
+      }
+      currentY += height + margin;
+    }
+    console.log(`[SuperLoraNode] No widget handled the event`);
+    return false;
+  }
+  /**
+   * Show LoRA selector dialog
+   */
+  static async showLoraSelector(node, widget, event) {
+    try {
+      let availableLoras = [];
+      try {
+        const response = await fetch("/object_info");
+        const objectInfo = await response.json();
+        const loraLoader = objectInfo["LoraLoader"];
+        if (loraLoader && loraLoader.input && loraLoader.input.required && loraLoader.input.required.lora_name) {
+          availableLoras = loraLoader.input.required.lora_name[0] || [];
+        }
+      } catch (fetchError) {
+        console.warn("Could not fetch LoRAs from API, using fallback:", fetchError);
+        availableLoras = [
+          "character_v1.safetensors",
+          "style_anime.safetensors",
+          "lighting_fix.safetensors",
+          "realistic_skin.safetensors",
+          "detailed_eyes.safetensors"
+        ];
+      }
+      if (availableLoras.length === 0) {
+        this.showToast("No LoRAs found", "warning");
+        return;
+      }
+      const usedLoras = this.getUsedLoras(node);
+      const unusedLoras = availableLoras.filter((lora) => !usedLoras.has(lora));
+      if (unusedLoras.length === 0) {
+        this.showToast("All available LoRAs are already added", "warning");
+        return;
+      }
+      const searchItem = {
+        content: `🔍 Search (${unusedLoras.length} LoRAs)...`,
+        callback: () => {
+          const searchTerm = prompt("Search LoRAs:", "");
+          if (searchTerm && searchTerm.trim()) {
+            const filtered = unusedLoras.filter(
+              (lora) => lora.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            if (filtered.length === 0) {
+              this.showToast("No LoRAs found matching search", "warning");
+              return;
+            }
+            const searchResults = filtered.slice(0, 20).map((lora) => ({
+              content: lora.replace(/\.(safetensors|ckpt|pt)$/, ""),
+              callback: () => {
+                if (widget) {
+                  widget.setLora(lora);
+                } else {
+                  this.addLoraWidget(node, { lora });
+                }
+                node.setDirtyCanvas(true, true);
+              }
+            }));
+            new LiteGraph.ContextMenu(searchResults, {
+              title: `Search Results (${filtered.length})`,
+              event
+            });
+          }
+        }
+      };
+      const menuItems = [searchItem, null];
+      menuItems.push(...unusedLoras.slice(0, 10).map((lora) => ({
+        content: lora.replace(/\.(safetensors|ckpt|pt)$/, ""),
+        callback: () => {
+          if (widget) {
+            widget.setLora(lora);
+          } else {
+            this.addLoraWidget(node, { lora });
+          }
+          node.setDirtyCanvas(true, true);
+        }
+      })));
+      if (unusedLoras.length > 10) {
+        menuItems.push(null, {
+          content: `... and ${unusedLoras.length - 10} more (use search)`,
+          callback: () => {
+            this.showToast("Use search to find more LoRAs", "success");
+          }
+        });
+      }
+      new LiteGraph.ContextMenu(menuItems, {
+        title: "Select LoRA",
+        event
+      });
+    } catch (error) {
+      console.error("Failed to show LoRA selector:", error);
+      this.showToast("Failed to load LoRAs", "error");
+    }
+  }
+  /**
+   * Show tag selector dialog
+   */
+  static showTagSelector(node, widget) {
+    const existingTags = this.getExistingTags(node);
+    const commonTags = ["General", "Character", "Style", "Quality", "Effect"];
+    const allTags = Array.from(/* @__PURE__ */ new Set([...commonTags, ...existingTags]));
+    const menuItems = allTags.map((tag) => ({
+      content: tag,
+      callback: () => {
+        widget.value.tag = tag;
+        this.organizeByTags(node);
+        this.calculateNodeSize(node);
+        node.setDirtyCanvas(true, false);
+      }
+    }));
+    menuItems.push(null, {
+      content: "Custom...",
+      callback: () => {
+        const customTag = prompt("Enter custom tag:", widget.value.tag);
+        if (customTag) {
+          widget.value.tag = customTag;
+          this.organizeByTags(node);
+          this.calculateNodeSize(node);
+          node.setDirtyCanvas(true, false);
+        }
+      }
+    });
+    new LiteGraph.ContextMenu(menuItems, { title: "Select Tag" });
+  }
+  /**
+   * Show settings dialog
+   */
+  static showSettingsDialog(node, event) {
+    const menuItems = [
+      {
+        content: `${node.properties.enableTags ? "✅" : "❌"} Enable Tags`,
+        callback: () => {
+          node.properties.enableTags = !node.properties.enableTags;
+          this.organizeByTags(node);
+          this.calculateNodeSize(node);
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showTriggerWords ? "✅" : "❌"} Show Trigger Words`,
+        callback: () => {
+          node.properties.showTriggerWords = !node.properties.showTriggerWords;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.showSeparateStrengths ? "✅" : "❌"} Separate Model/CLIP Strengths`,
+        callback: () => {
+          node.properties.showSeparateStrengths = !node.properties.showSeparateStrengths;
+          node.setDirtyCanvas(true, false);
+        }
+      },
+      {
+        content: `${node.properties.autoFetchTriggerWords ? "✅" : "❌"} Auto-fetch Trigger Words`,
+        callback: () => {
+          node.properties.autoFetchTriggerWords = !node.properties.autoFetchTriggerWords;
+        }
+      }
+    ];
+    new LiteGraph.ContextMenu(menuItems, { title: "Settings", event });
+  }
+  /**
+   * Show save template dialog
+   */
+  static showSaveTemplateDialog(node) {
+    const templateName = prompt("Enter template name:", "My LoRA Set");
+    if (templateName && templateName.trim()) {
+      const configs = this.getLoraConfigs(node);
+      this.templateService.saveTemplate(templateName.trim(), configs).then((success) => {
+        if (success) {
+          this.showToast(`Template "${templateName.trim()}" saved successfully!`, "success");
+        } else {
+          this.showToast("Failed to save template", "error");
+        }
+      });
+    }
+  }
+  /**
+   * Show load template dialog
+   */
+  static async showLoadTemplateDialog(node, event) {
+    try {
+      const templateNames = await this.templateService.getTemplateNames();
+      if (templateNames.length === 0) {
+        this.showToast("No templates available", "warning");
+        return;
+      }
+      const menuItems = templateNames.map((name) => ({
+        content: name,
+        callback: async () => {
+          const template = await this.templateService.loadTemplate(name);
+          if (template) {
+            this.loadTemplate(node, template.loras);
+            this.showToast(`Template "${name}" loaded successfully!`, "success");
+          } else {
+            this.showToast("Failed to load template", "error");
+          }
+        }
+      }));
+      new LiteGraph.ContextMenu(menuItems, { title: "Load Template", event });
+    } catch (error) {
+      console.error("Failed to show template selector:", error);
+      this.showToast("Error loading templates", "error");
+    }
+  }
+  /**
+   * Add a new LoRA widget
+   */
+  static addLoraWidget(node, config) {
+    const widget = new SuperLoraWidget(`lora_${Date.now()}`);
+    if (config) {
+      Object.assign(widget.value, config);
+    }
+    node.customWidgets = node.customWidgets || [];
+    node.customWidgets.push(widget);
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas(true, false);
+    return widget;
+  }
+  /**
+   * Remove a LoRA widget
+   */
+  static removeLoraWidget(node, widget) {
+    const index = node.customWidgets.indexOf(widget);
+    if (index >= 0) {
+      node.customWidgets.splice(index, 1);
+      this.organizeByTags(node);
+      this.calculateNodeSize(node);
+      node.setDirtyCanvas(true, false);
+    }
+  }
+  /**
+   * Organize widgets by tags
+   */
+  static organizeByTags(node) {
+    if (!node.properties.enableTags) {
+      node.customWidgets = node.customWidgets.filter((w) => !(w instanceof SuperLoraTagWidget));
+      return;
+    }
+    const loraWidgets = node.customWidgets.filter((w) => w instanceof SuperLoraWidget);
+    const headerWidget = node.customWidgets.find((w) => w instanceof SuperLoraHeaderWidget);
+    const tagGroups = {};
+    for (const widget of loraWidgets) {
+      const tag = widget.value.tag || "General";
+      if (!tagGroups[tag]) tagGroups[tag] = [];
+      tagGroups[tag].push(widget);
+    }
+    node.customWidgets = [headerWidget].filter(Boolean);
+    const sortedTags = Object.keys(tagGroups).sort(
+      (a, b) => a === "General" ? -1 : b === "General" ? 1 : a.localeCompare(b)
+    );
+    for (const tag of sortedTags) {
+      let tagWidget = node.customWidgets.find(
+        (w) => w instanceof SuperLoraTagWidget && w.tag === tag
+      );
+      if (!tagWidget) {
+        tagWidget = new SuperLoraTagWidget(tag);
+      }
+      node.customWidgets.push(tagWidget);
+      node.customWidgets.push(...tagGroups[tag]);
+    }
+  }
+  /**
+   * Get used LoRA names
+   */
+  static getUsedLoras(node) {
+    return new Set(
+      node.customWidgets.filter((w) => w instanceof SuperLoraWidget).map((w) => w.value.lora).filter((lora) => lora && lora !== "None")
+    );
+  }
+  /**
+   * Get existing tags
+   */
+  static getExistingTags(node) {
+    return Array.from(new Set(
+      node.customWidgets.filter((w) => w instanceof SuperLoraWidget).map((w) => w.value.tag).filter((tag) => tag)
+    ));
+  }
+  /**
+   * Get LoRA configurations
+   */
+  static getLoraConfigs(node) {
+    return node.customWidgets.filter((w) => w instanceof SuperLoraWidget).map((w) => ({
+      lora: w.value.lora,
+      enabled: w.value.enabled,
+      strength_model: w.value.strength,
+      strength_clip: w.value.strengthClip,
+      trigger_word: w.value.triggerWords,
+      tag: w.value.tag,
+      auto_populated: w.value.autoFetched
+    })).filter((config) => config.lora && config.lora !== "None");
+  }
+  /**
+   * Load template configurations
+   */
+  static loadTemplate(node, configs) {
+    node.customWidgets = node.customWidgets.filter(
+      (w) => !(w instanceof SuperLoraWidget) && !(w instanceof SuperLoraTagWidget)
+    );
+    for (const config of configs) {
+      const widget = new SuperLoraWidget(`lora_${Date.now()}_${Math.random()}`);
+      widget.value = {
+        lora: config.lora,
+        enabled: config.enabled !== false,
+        strength: config.strength_model || 1,
+        strengthClip: config.strength_clip || config.strength_model || 1,
+        triggerWords: config.trigger_word || "",
+        tag: config.tag || "General",
+        autoFetched: config.auto_populated || false
+      };
+      node.customWidgets.push(widget);
+    }
+    this.organizeByTags(node);
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas(true, false);
+  }
+  /**
+   * Serialize custom widgets for saving
+   */
+  static serializeCustomWidgets(node) {
+    if (!node.customWidgets) return null;
+    return {
+      properties: node.properties,
+      widgets: node.customWidgets.map((widget) => ({
+        name: widget.name,
+        type: widget.constructor.name,
+        value: widget.value
+      }))
+    };
+  }
+  /**
+   * Deserialize custom widgets when loading
+   */
+  static deserializeCustomWidgets(node, data) {
+    if (!data) return;
+    if (data.properties) {
+      Object.assign(node.properties, data.properties);
+    }
+    if (data.widgets) {
+      node.customWidgets = [];
+      for (const widgetData of data.widgets) {
+        let widget;
+        switch (widgetData.type) {
+          case "SuperLoraHeaderWidget":
+            widget = new SuperLoraHeaderWidget();
+            break;
+          case "SuperLoraTagWidget":
+            widget = new SuperLoraTagWidget(widgetData.value.tag);
+            break;
+          case "SuperLoraWidget":
+            widget = new SuperLoraWidget(widgetData.name);
+            break;
+          default:
+            continue;
+        }
+        widget.value = { ...widget.value, ...widgetData.value };
+        node.customWidgets.push(widget);
+      }
+    }
+    if (!node.customWidgets.find((w) => w instanceof SuperLoraHeaderWidget)) {
+      node.customWidgets.unshift(new SuperLoraHeaderWidget());
+    }
+    node.setDirtyCanvas(true, true);
+  }
+  /**
+   * Get execution data for backend
+   */
+  static getExecutionData(node) {
+    var _a;
+    const loraWidgets = ((_a = node.customWidgets) == null ? void 0 : _a.filter((w) => w instanceof SuperLoraWidget)) || [];
+    const executionData = {};
+    loraWidgets.forEach((widget, index) => {
+      if (widget.value.lora && widget.value.lora !== "None") {
+        executionData[`lora_${index}`] = {
+          lora: widget.value.lora,
+          enabled: widget.value.enabled,
+          strength: widget.value.strength,
+          strengthClip: widget.value.strengthClip,
+          triggerWords: widget.value.triggerWords,
+          tag: widget.value.tag,
+          autoFetched: widget.value.autoFetched
+        };
+      }
+    });
+    return executionData;
+  }
+  /**
+   * Show toast notification
+   */
+  static showToast(message, type = "success") {
+    console.log(`Super LoRA Loader [${type}]: ${message}`);
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${type === "error" ? "#dc3545" : type === "warning" ? "#ffc107" : "#28a745"};
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      z-index: 10000;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = "1";
+    }, 10);
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 300);
+    }, 3e3);
+  }
+  // Inline editors for better UX
+  static showInlineNumber(event, initial, onCommit) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "0.05";
+    input.value = String(initial ?? 0);
+    input.style.cssText = `
+      position: fixed;
+      left: ${(() => {
+      const p = _SuperLoraNode._lastPointerScreen;
+      return ((event == null ? void 0 : event.clientX) ?? (p == null ? void 0 : p.x) ?? 100) + 8;
+    })()}px;
+      top: ${(() => {
+      const p = _SuperLoraNode._lastPointerScreen;
+      return ((event == null ? void 0 : event.clientY) ?? (p == null ? void 0 : p.y) ?? 100) - 10;
+    })()}px;
+      width: 80px;
+      padding: 4px 6px;
+      font-size: 12px;
+      z-index: 2147483647;
+      pointer-events: auto;
+    `;
+    const cleanup = () => input.remove();
+    const commit = () => {
+      const v = parseFloat(input.value);
+      if (!Number.isNaN(v)) onCommit(v);
+      cleanup();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit();
+      if (e.key === "Escape") cleanup();
+    });
+    input.addEventListener("blur", cleanup);
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+  }
+  static showInlineText(event, initial, onCommit) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = initial ?? "";
+    input.style.cssText = `
+      position: fixed;
+      left: ${(() => {
+      const p = _SuperLoraNode._lastPointerScreen;
+      return ((event == null ? void 0 : event.clientX) ?? (p == null ? void 0 : p.x) ?? 100) + 8;
+    })()}px;
+      top: ${(() => {
+      const p = _SuperLoraNode._lastPointerScreen;
+      return ((event == null ? void 0 : event.clientY) ?? (p == null ? void 0 : p.y) ?? 100) - 10;
+    })()}px;
+      width: 260px;
+      padding: 4px 6px;
+      font-size: 12px;
+      z-index: 2147483647;
+      pointer-events: auto;
+    `;
+    const cleanup = () => input.remove();
+    const commit = () => {
+      onCommit(input.value ?? "");
+      cleanup();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit();
+      if (e.key === "Escape") cleanup();
+    });
+    input.addEventListener("blur", cleanup);
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+  }
+};
+_SuperLoraNode.NODE_WIDGET_TOP_OFFSET = 64;
+let SuperLoraNode = _SuperLoraNode;
+const EXTENSION_NAME = "SuperLoraLoader";
+const NODE_TYPE = "SuperLoraLoader";
+const superLoraExtension = {
+  name: EXTENSION_NAME,
+  // Extension settings
+  settings: [
+    {
+      id: "superLora.autoFetchTriggerWords",
+      name: "Auto-fetch Trigger Words",
+      type: "boolean",
+      defaultValue: true
+    },
+    {
+      id: "superLora.enableTags",
+      name: "Enable Tag System",
+      type: "boolean",
+      defaultValue: false
+    },
+    {
+      id: "superLora.showSeparateStrengths",
+      name: "Show Separate Model/CLIP Strengths",
+      type: "boolean",
+      defaultValue: false
+    },
+    {
+      id: "superLora.enableTemplates",
+      name: "Enable Template System",
+      type: "boolean",
+      defaultValue: true
+    },
+    {
+      id: "superLora.enableDeletion",
+      name: "Enable LoRA Deletion",
+      type: "boolean",
+      defaultValue: true
+    },
+    {
+      id: "superLora.enableSorting",
+      name: "Enable LoRA Sorting",
+      type: "boolean",
+      defaultValue: true
+    }
+  ],
+  // Extension commands
+  commands: [
+    {
+      id: "superLora.addLora",
+      label: "Add LoRA to Super LoRA Loader",
+      function: () => {
+        console.log("Super LoRA Loader: Add LoRA command triggered");
+      }
+    },
+    {
+      id: "superLora.showTriggerWords",
+      label: "Show All Trigger Words",
+      function: () => {
+        console.log("Super LoRA Loader: Show trigger words command triggered");
+      }
+    }
+  ],
+  /**
+   * Called before a node type is registered
+   */
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name === NODE_TYPE) {
+      console.log("Super LoRA Loader: Registering node type");
+      await SuperLoraNode.initialize();
+      SuperLoraNode.setup(nodeType, nodeData);
+      console.log("Super LoRA Loader: Node type registered successfully");
+    }
+  },
+  /**
+   * Called when a node is created
+   */
+  nodeCreated(node) {
+    if (node.type === NODE_TYPE) {
+      console.log("Super LoRA Loader: Node created", node.id);
+      this.setupNodeEventHandlers(node);
+    }
+  },
+  /**
+   * Called before the graph is configured
+   */
+  beforeConfigureGraph(graphData) {
+    console.log("Super LoRA Loader: Configuring graph");
+  },
+  /**
+   * Set up additional event handlers for the node
+   */
+  setupNodeEventHandlers(node) {
+    const originalOnRemoved = node.onRemoved;
+    node.onRemoved = function() {
+      console.log("Super LoRA Loader: Node removed", this.id);
+      if (originalOnRemoved) {
+        originalOnRemoved.apply(this, arguments);
+      }
+    };
+    const originalClone = node.clone;
+    node.clone = function() {
+      const clonedNode = originalClone ? originalClone.apply(this, arguments) : this;
+      console.log("Super LoRA Loader: Node cloned", this.id, "->", clonedNode.id);
+      return clonedNode;
+    };
+    const originalOnPropertyChanged = node.onPropertyChanged;
+    node.onPropertyChanged = function(name, value) {
+      var _a;
+      console.log("Super LoRA Loader: Property changed", name, value);
+      if (name.startsWith("@")) {
+        const settingName = name.substring(1);
+        (_a = this.onSettingChanged) == null ? void 0 : _a.call(this, settingName, value);
+      }
+      if (originalOnPropertyChanged) {
+        originalOnPropertyChanged.apply(this, arguments);
+      }
+    };
+  }
+};
+console.log("Super LoRA Loader: Registering extension with ComfyUI");
+app.registerExtension(superLoraExtension);
+console.log("Super LoRA Loader: Extension registered successfully");
+//# sourceMappingURL=extension.js.map

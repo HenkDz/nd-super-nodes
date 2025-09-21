@@ -1,0 +1,318 @@
+/**
+ * Main styles for Super LoRA Loader
+ */
+
+@import 'variables';
+
+.super-lora-node {
+  background: $bg-primary;
+  border: 1px solid $border-color;
+  border-radius: $border-radius-md;
+  
+  &:hover {
+    border-color: $border-hover;
+  }
+  
+  &.selected {
+    border-color: $border-active;
+    box-shadow: 0 0 8px rgba($primary-color, 0.3);
+  }
+}
+
+.super-lora-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-md;
+  background: $bg-secondary;
+  border-bottom: 1px solid $border-color;
+  border-radius: $border-radius-md $border-radius-md 0 0;
+  
+  .header-title {
+    color: $text-primary;
+    font-size: $font-size-lg;
+    font-weight: 600;
+  }
+  
+  .header-controls {
+    display: flex;
+    gap: $spacing-sm;
+  }
+}
+
+.super-lora-tag-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-sm $spacing-md;
+  background: $bg-tertiary;
+  border-bottom: 1px solid $border-color;
+  cursor: pointer;
+  transition: background-color $transition-fast;
+  
+  &:hover {
+    background: $bg-hover;
+  }
+  
+  .tag-info {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    
+    .tag-icon {
+      font-size: $font-size-md;
+    }
+    
+    .tag-name {
+      color: $text-primary;
+      font-weight: 500;
+    }
+    
+    .tag-count {
+      color: $text-muted;
+      font-size: $font-size-sm;
+    }
+  }
+  
+  .tag-controls {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    
+    .collapse-icon {
+      color: $text-secondary;
+      transition: transform $transition-fast;
+      
+      &.collapsed {
+        transform: rotate(-90deg);
+      }
+    }
+  }
+  
+  // Tag-specific colors
+  &.tag-general { border-left: 3px solid $tag-general; }
+  &.tag-character { border-left: 3px solid $tag-character; }
+  &.tag-style { border-left: 3px solid $tag-style; }
+  &.tag-quality { border-left: 3px solid $tag-quality; }
+  &.tag-effect { border-left: 3px solid $tag-effect; }
+  &.tag-custom { border-left: 3px solid $tag-custom; }
+}
+
+.super-lora-widget {
+  display: flex;
+  align-items: center;
+  padding: $spacing-sm $spacing-md;
+  border-bottom: 1px solid rgba($border-color, 0.5);
+  transition: background-color $transition-fast;
+  
+  &:hover {
+    background: rgba($bg-hover, 0.5);
+  }
+  
+  &.disabled {
+    opacity: 0.6;
+  }
+  
+  .lora-toggle {
+    margin-right: $spacing-md;
+    
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: $primary-color;
+    }
+  }
+  
+  .lora-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    
+    .lora-name {
+      color: $text-primary;
+      font-size: $font-size-sm;
+      font-weight: 500;
+    }
+    
+    .lora-trigger {
+      color: $text-secondary;
+      font-size: $font-size-xs;
+      
+      &.auto-populated {
+        color: $success-color;
+        
+        &::before {
+          content: "●";
+          margin-right: $spacing-xs;
+        }
+      }
+    }
+  }
+  
+  .lora-controls {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    
+    .strength-control {
+      display: flex;
+      align-items: center;
+      gap: $spacing-xs;
+      
+      label {
+        color: $text-muted;
+        font-size: $font-size-xs;
+        min-width: 20px;
+      }
+      
+      input[type="number"] {
+        width: 50px;
+        height: $button-height;
+        background: $bg-primary;
+        border: 1px solid $border-color;
+        border-radius: $border-radius-sm;
+        color: $text-primary;
+        font-size: $font-size-xs;
+        text-align: center;
+        
+        &:focus {
+          border-color: $border-active;
+          outline: none;
+        }
+      }
+    }
+    
+    .tag-button {
+      padding: $spacing-xs $spacing-sm;
+      background: transparent;
+      border: 1px solid $border-color;
+      border-radius: $border-radius-sm;
+      color: $text-secondary;
+      font-size: $font-size-xs;
+      cursor: pointer;
+      transition: all $transition-fast;
+      
+      &:hover {
+        background: $bg-hover;
+        border-color: $border-hover;
+      }
+    }
+    
+    .delete-button {
+      padding: $spacing-xs;
+      background: transparent;
+      border: none;
+      color: $danger-color;
+      cursor: pointer;
+      border-radius: $border-radius-sm;
+      transition: background-color $transition-fast;
+      
+      &:hover {
+        background: rgba($danger-color, 0.1);
+      }
+    }
+  }
+}
+
+.super-lora-footer {
+  padding: $spacing-md;
+  background: $bg-secondary;
+  border-radius: 0 0 $border-radius-md $border-radius-md;
+  
+  .footer-buttons {
+    display: flex;
+    gap: $spacing-sm;
+    flex-wrap: wrap;
+  }
+}
+
+.super-lora-button {
+  padding: $spacing-sm $spacing-md;
+  background: $bg-tertiary;
+  border: 1px solid $border-color;
+  border-radius: $border-radius-sm;
+  color: $text-primary;
+  font-size: $font-size-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+  
+  &:hover {
+    background: $bg-hover;
+    border-color: $border-hover;
+  }
+  
+  &:active {
+    transform: translateY(1px);
+  }
+  
+  &.primary {
+    background: $primary-color;
+    border-color: $primary-color;
+    
+    &:hover {
+      background: $primary-hover;
+      border-color: $primary-hover;
+    }
+  }
+  
+  &.danger {
+    background: $danger-color;
+    border-color: $danger-color;
+    
+    &:hover {
+      background: darken($danger-color, 10%);
+      border-color: darken($danger-color, 10%);
+    }
+  }
+}
+
+// Settings dialog
+.super-lora-settings {
+  .setting-group {
+    margin-bottom: $spacing-lg;
+    
+    .setting-label {
+      color: $text-primary;
+      font-size: $font-size-md;
+      font-weight: 500;
+      margin-bottom: $spacing-sm;
+    }
+    
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: $spacing-sm;
+      
+      input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: $primary-color;
+      }
+      
+      label {
+        color: $text-secondary;
+        font-size: $font-size-sm;
+      }
+    }
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { height: 0; opacity: 0; }
+  to { height: auto; opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn $transition-normal;
+}
+
+.slide-down {
+  animation: slideDown $transition-normal;
+}

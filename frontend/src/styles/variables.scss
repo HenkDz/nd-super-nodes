@@ -1,0 +1,73 @@
+/**
+ * SCSS Variables for Super LoRA Loader
+ */
+
+// Colors
+$primary-color: #4a9eff;
+$primary-hover: #3a8eef;
+$secondary-color: #6c757d;
+$success-color: #28a745;
+$warning-color: #ffc107;
+$danger-color: #dc3545;
+$info-color: #17a2b8;
+
+// Background colors
+$bg-primary: #2d2d2d;
+$bg-secondary: #3a3a3a;
+$bg-tertiary: #454545;
+$bg-hover: #4a4a4a;
+
+// Text colors
+$text-primary: #ffffff;
+$text-secondary: #cccccc;
+$text-muted: #999999;
+$text-disabled: #666666;
+
+// Border colors
+$border-color: #555555;
+$border-hover: #777777;
+$border-active: $primary-color;
+
+// Spacing
+$spacing-xs: 2px;
+$spacing-sm: 4px;
+$spacing-md: 8px;
+$spacing-lg: 12px;
+$spacing-xl: 16px;
+$spacing-xxl: 24px;
+
+// Border radius
+$border-radius-sm: 3px;
+$border-radius-md: 5px;
+$border-radius-lg: 8px;
+
+// Font sizes
+$font-size-xs: 10px;
+$font-size-sm: 12px;
+$font-size-md: 14px;
+$font-size-lg: 16px;
+$font-size-xl: 18px;
+
+// Widget dimensions
+$widget-height: 24px;
+$widget-min-width: 100px;
+$header-height: 28px;
+$button-height: 22px;
+
+// Z-index layers
+$z-tooltip: 1000;
+$z-dropdown: 1010;
+$z-modal: 1020;
+
+// Transitions
+$transition-fast: 0.1s ease;
+$transition-normal: 0.2s ease;
+$transition-slow: 0.3s ease;
+
+// Tag colors
+$tag-general: #6c757d;
+$tag-character: #e83e8c;
+$tag-style: #6f42c1;
+$tag-quality: #20c997;
+$tag-effect: #fd7e14;
+$tag-custom: #17a2b8;

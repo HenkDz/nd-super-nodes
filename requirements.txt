@@ -1,0 +1,13 @@
+# Super LoRA Loader - Backend Dependencies
+# These are optional dependencies for enhanced features
+
+# For CivitAI API integration (async HTTP requests)
+aiohttp>=3.8.0
+
+# For advanced file hashing (usually included in Python)
+# hashlib - built-in
+
+# ComfyUI dependencies are handled by ComfyUI itself:
+# - torch
+# - folder_paths
+# - nodes
