@@ -476,7 +476,26 @@ export class SuperLoraNode {
       {
         content: `${node.properties.showSeparateStrengths ? "✅" : "❌"} Separate Model/CLIP Strengths`,
         callback: () => {
-          node.properties.showSeparateStrengths = !node.properties.showSeparateStrengths;
+          const enabling = !node.properties.showSeparateStrengths;
+          node.properties.showSeparateStrengths = enabling;
+          try {
+            // Initialize or merge strengths for better UX
+            const widgets = (node.customWidgets || []).filter((w: any) => w instanceof SuperLoraWidget);
+            if (enabling) {
+              // When turning on separate strengths, seed CLIP = Model for all
+              widgets.forEach((w: any) => {
+                const m = parseFloat(w.value?.strength ?? 0) || 0;
+                w.value.strengthClip = (typeof w.value?.strengthClip === 'number') ? w.value.strengthClip : m;
+              });
+            } else {
+              // When turning off, merge CLIP back to Model for consistency
+              widgets.forEach((w: any) => {
+                const m = parseFloat(w.value?.strength ?? 0) || 0;
+                w.value.strength = m;
+                w.value.strengthClip = m;
+              });
+            }
+          } catch {}
           node.setDirtyCanvas(true, false);
           this.syncExecutionWidgets(node);
         }

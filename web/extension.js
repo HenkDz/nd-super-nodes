@@ -884,6 +884,46 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       }
       return true;
     };
+    this.onStrengthClipClick = (event, _pos, node) => {
+      try {
+        const app2 = window?.app;
+        const canvas = app2?.canvas;
+        if (canvas?.prompt) {
+          canvas.prompt("CLIP Strength", this.value.strengthClip ?? this.value.strength ?? 1, (v) => {
+            const val = parseFloat(v);
+            if (!Number.isNaN(val)) {
+              this.value.strengthClip = Math.max(-10, Math.min(10, val));
+              node.setDirtyCanvas(true, true);
+              try {
+                WidgetAPI.syncExecutionWidgets(node);
+              } catch {
+              }
+            }
+          }, event);
+          return true;
+        }
+      } catch {
+      }
+      return false;
+    };
+    this.onStrengthClipDownClick = (_event, _pos, node) => {
+      this.value.strengthClip = Math.max(-10, (this.value.strengthClip ?? this.value.strength ?? 1) - 0.1);
+      node.setDirtyCanvas(true, false);
+      try {
+        WidgetAPI.syncExecutionWidgets(node);
+      } catch {
+      }
+      return true;
+    };
+    this.onStrengthClipUpClick = (_event, _pos, node) => {
+      this.value.strengthClip = Math.min(10, (this.value.strengthClip ?? this.value.strength ?? 1) + 0.1);
+      node.setDirtyCanvas(true, false);
+      try {
+        WidgetAPI.syncExecutionWidgets(node);
+      } catch {
+      }
+      return true;
+    };
     this.onMoveUpClick = (_event, _pos, node) => {
       const idx = node.customWidgets.indexOf(this);
       if (idx <= 1) return true;
@@ -1066,6 +1106,9 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       strength: { bounds: [0, 0], onClick: this.onStrengthClick, priority: 80 },
       strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
       strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
+      strengthClip: { bounds: [0, 0], onClick: this.onStrengthClipClick, priority: 80 },
+      strengthClipDown: { bounds: [0, 0], onClick: this.onStrengthClipDownClick, priority: 90 },
+      strengthClipUp: { bounds: [0, 0], onClick: this.onStrengthClipUpClick, priority: 90 },
       triggerWords: { bounds: [0, 0], onClick: this.onTriggerWordsClick, priority: 85 },
       refresh: { bounds: [0, 0], onClick: this.onRefreshClick, priority: 95 },
       remove: { bounds: [0, 0], onClick: this.onRemoveClick, priority: 100 },
@@ -1134,6 +1177,9 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     let plusX = -9999;
     let minusX = -9999;
     let strengthX = -9999;
+    let plusClipX = -9999;
+    let minusClipX = -9999;
+    let strengthClipX = -9999;
     let upX = -9999;
     let downX = -9999;
     if (showRemove) {
@@ -1151,9 +1197,21 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       cursorX -= btnSize;
       minusX = cursorX - gap;
       cursorX -= gap;
+      if (node?.properties?.showSeparateStrengths) {
+        cursorX -= btnSize;
+        plusClipX = cursorX - gap;
+        cursorX -= gapSmall;
+        cursorX -= strengthWidth;
+        strengthClipX = cursorX - gap;
+        cursorX -= gapSmall;
+        cursorX -= btnSize;
+        minusClipX = cursorX - gap;
+        cursorX -= gap;
+      }
     }
     if (showMoveArrows) {
-      const arrowRightStart = showStrength ? minusX - gap : showRemove ? removeX - gap : rightEdge - gap;
+      const leftMostMinus = showStrength && node?.properties?.showSeparateStrengths ? Math.min(minusX, minusClipX) : minusX;
+      const arrowRightStart = showStrength ? leftMostMinus - gap : showRemove ? removeX - gap : rightEdge - gap;
       upX = arrowRightStart - arrowSize - 4;
       downX = upX - (arrowSize + 2);
       cursorX -= gap;
@@ -1188,6 +1246,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const rightMost = [
       showMoveArrows ? downX : null,
       showStrength ? minusX : null,
+      showStrength && node?.properties?.showSeparateStrengths ? minusClipX : null,
       showRemove ? removeX : null
     ].filter((v) => typeof v === "number");
     const loraMaxRight = (rightMost.length ? Math.min(...rightMost) : rightEdge) - gap;
@@ -1353,7 +1412,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     }
     if (node?.properties?.showStrengthControls !== false) {
       const strengthY = (rowHeight - 20) / 2;
-      ctx.fillStyle = this.value.enabled ? "#3a3a3a" : "#2a2a2a";
+      ctx.fillStyle = this.value.enabled ? "#3b2a4a" : "#2a2a2a";
       ctx.beginPath();
       ctx.roundRect(strengthX, posY + strengthY, strengthWidth, 20, 3);
       ctx.fill();
@@ -1380,6 +1439,43 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       this.hitAreas.strengthUp.bounds = [plusX, 0, btnSize, fullHeight];
     } else {
       this.hitAreas.strengthUp.bounds = [0, 0, 0, 0];
+    }
+    if (showStrength && node?.properties?.showSeparateStrengths) {
+      ctx.fillStyle = "#666";
+      ctx.beginPath();
+      ctx.roundRect(minusClipX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("-", minusClipX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthClipDown.bounds = [minusClipX, 0, btnSize, fullHeight];
+      const strengthY2 = (rowHeight - 20) / 2;
+      ctx.fillStyle = this.value.enabled ? "#4a3f1f" : "#2a2a2a";
+      ctx.beginPath();
+      ctx.roundRect(strengthClipX, posY + strengthY2, strengthWidth, 20, 3);
+      ctx.fill();
+      ctx.strokeStyle = "#4a4a4a";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = this.value.enabled ? "#e5e5e5" : "#bdbdbd";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText(this.value.strengthClip.toFixed(2), strengthClipX + strengthWidth / 2, posY + midY);
+      this.hitAreas.strengthClip.bounds = [strengthClipX, 0, strengthWidth, fullHeight];
+      ctx.fillStyle = "#666";
+      ctx.beginPath();
+      ctx.roundRect(plusClipX, posY + btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.font = "12px Arial";
+      ctx.fillText("+", plusClipX + btnSize / 2, posY + midY);
+      this.hitAreas.strengthClipUp.bounds = [plusClipX, 0, btnSize, fullHeight];
+    } else {
+      this.hitAreas.strengthClipDown.bounds = [0, 0, 0, 0];
+      this.hitAreas.strengthClip.bounds = [0, 0, 0, 0];
+      this.hitAreas.strengthClipUp.bounds = [0, 0, 0, 0];
     }
     ctx.restore();
     if (node?.properties?.showRemoveButton !== false) {
@@ -1951,7 +2047,24 @@ const _SuperLoraNode = class _SuperLoraNode {
       {
         content: `${node.properties.showSeparateStrengths ? "✅" : "❌"} Separate Model/CLIP Strengths`,
         callback: () => {
-          node.properties.showSeparateStrengths = !node.properties.showSeparateStrengths;
+          const enabling = !node.properties.showSeparateStrengths;
+          node.properties.showSeparateStrengths = enabling;
+          try {
+            const widgets = (node.customWidgets || []).filter((w) => w instanceof SuperLoraWidget);
+            if (enabling) {
+              widgets.forEach((w) => {
+                const m = parseFloat(w.value?.strength ?? 0) || 0;
+                w.value.strengthClip = typeof w.value?.strengthClip === "number" ? w.value.strengthClip : m;
+              });
+            } else {
+              widgets.forEach((w) => {
+                const m = parseFloat(w.value?.strength ?? 0) || 0;
+                w.value.strength = m;
+                w.value.strengthClip = m;
+              });
+            }
+          } catch {
+          }
           node.setDirtyCanvas(true, false);
           this.syncExecutionWidgets(node);
         }
