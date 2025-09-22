@@ -3,6 +3,8 @@ Super LoRA Loader Node - Main implementation
 """
 
 from typing import Union, Dict, Any, Tuple, List
+import re
+import json
 
 # Import ComfyUI modules with fallbacks
 try:
@@ -53,139 +55,70 @@ class SuperLoraLoader:
             "optional": {
                 "model": ("MODEL",),
                 "clip": ("CLIP",),
-                # Dynamic inputs will be added by the frontend
+                # Frontend will provide a JSON array of lora configs here
+                "lora_bundle": ("STRING",),
             },
             "hidden": {}
         }
     
-    def load_loras(self, model=None, clip=None, **kwargs) -> Tuple[Any, Any, str]:
+    def load_loras(self, model=None, clip=None, lora_bundle: Union[str, None] = None, **kwargs) -> Tuple[Any, Any, str]:
         """
-        Load multiple LoRAs from custom widget data and return the modified model, clip, and trigger words.
-
-        Args:
-            model: Input model (optional)
-            clip: Input CLIP (optional) 
-            **kwargs: Custom widget data from frontend
-
-        Returns:
-            Tuple of (modified_model, modified_clip, combined_trigger_words)
+        Load multiple LoRAs from provided bundle and return modified model, clip, and trigger words.
         """
         if not COMFYUI_AVAILABLE:
             print("Super LoRA Loader: ComfyUI not available, cannot load LoRAs")
             return (model, clip, "")
 
-        trigger_words = []
+        trigger_words: List[str] = []
         current_model = model
         current_clip = clip
 
-        # Process custom widget data from frontend
-        # The frontend sends serialized custom widget data
-        lora_configs = []
-        
-        # Extract LoRA configurations from widget data
-        # Look for any values that look like LoRA configurations
-        for key, value in kwargs.items():
-            if isinstance(value, dict) and 'lora' in value:
-                # This is a LoRA widget configuration
-                lora_configs.append(value)
-            elif key.startswith('lora_') and isinstance(value, dict):
-                # Also check for lora_ prefixed keys
-                lora_configs.append(value)
+        print("--- Super LoRA Loader Backend ---")
+        print(f"Received lora_bundle length: {len(lora_bundle) if isinstance(lora_bundle, str) else 'None'}")
 
-        # If no custom widget data found, try to parse the old format for backward compatibility
-        if not lora_configs:
-            lora_slots = {}
-            
-            # Parse old widget format
-            for key, value in kwargs.items():
-                if key.startswith('LoRA '):
-                    try:
-                        slot_num = int(key.split(' ')[1]) - 1
-                        if slot_num not in lora_slots:
-                            lora_slots[slot_num] = {}
-                        lora_slots[slot_num]['lora'] = value
-                    except:
-                        continue
-                elif key.startswith('Enable '):
-                    try:
-                        slot_num = int(key.split(' ')[1]) - 1
-                        if slot_num not in lora_slots:
-                            lora_slots[slot_num] = {}
-                        lora_slots[slot_num]['enabled'] = value
-                    except:
-                        continue
-                elif key.startswith('Strength '):
-                    try:
-                        slot_num = int(key.split(' ')[1]) - 1
-                        if slot_num not in lora_slots:
-                            lora_slots[slot_num] = {}
-                        lora_slots[slot_num]['strength'] = float(value)
-                    except:
-                        continue
-                elif key.startswith('Trigger Words '):
-                    try:
-                        slot_num = int(key.split(' ')[2]) - 1
-                        if slot_num not in lora_slots:
-                            lora_slots[slot_num] = {}
-                        lora_slots[slot_num]['trigger_words'] = str(value)
-                    except:
-                        continue
-            
-            # Convert old format to new format
-            for slot_data in lora_slots.values():
-                if slot_data.get('lora') and slot_data.get('lora') != 'None':
-                    lora_configs.append({
-                        'lora': slot_data.get('lora'),
-                        'enabled': slot_data.get('enabled', True),
-                        'strength': slot_data.get('strength', 1.0),
-                        'strengthClip': slot_data.get('strength', 1.0),
-                        'triggerWords': slot_data.get('trigger_words', '')
-                    })
-
-        print(f"Super LoRA Loader: Processing {len(lora_configs)} LoRA configurations")
-
-        # Prepare CivitAI service for optional trigger fetches
-        civitai_service = None
-        try:
-            civitai_service = get_civitai_service()
-        except Exception:
-            civitai_service = None
-
-        # Process each LoRA configuration
-        for i, config in enumerate(lora_configs):
-            # Normalize config field names from various frontends/templates
-            lora_name = config.get('lora', 'None') or config.get('file') or config.get('name') or 'None'
-            enabled = config.get('enabled', True) if config.get('enabled') is not None else bool(config.get('on', True))
-
-            # Strengths (accept both camelCase and snake_case and legacy fields)
-            strength_model_val = (
-                config.get('strength_model', None)
-                if config.get('strength_model', None) is not None else config.get('strength', None)
-            )
-            strength_clip_val = (
-                config.get('strength_clip', None)
-                if config.get('strength_clip', None) is not None else (config.get('strengthClip', None) if config.get('strengthClip', None) is not None else config.get('strength', None))
-            )
-            strength_model = float(strength_model_val if strength_model_val is not None else 1.0)
-            strength_clip = float(strength_clip_val if strength_clip_val is not None else strength_model)
-
-            # Trigger word (camelCase or snake_case)
-            tw = config.get('trigger_word', None)
-            if tw is None:
-                tw = config.get('triggerWords', '')
-            trigger_word = str(tw or '').strip()
-
-            # Skip if not enabled or no LoRA selected
-            if not enabled or lora_name == "None" or not lora_name:
-                continue
-
-            # Skip if strength is zero
-            if strength_model == 0:
-                continue
-
+        # Parse lora configs from the bundle (JSON array)
+        lora_configs: List[Dict[str, Any]] = []
+        if isinstance(lora_bundle, str) and lora_bundle.strip():
             try:
-                # Load the LoRA
-                if current_model is not None and LoraLoader is not None:
+                parsed = json.loads(lora_bundle)
+                if isinstance(parsed, list):
+                    lora_configs = parsed
+                else:
+                    print("Super LoRA Loader: lora_bundle is not a list; ignoring")
+            except json.JSONDecodeError as e:
+                print(f"Super LoRA Loader: Failed to parse lora_bundle JSON: {e}")
+        else:
+            # Fallback: try kwargs (legacy/testing paths like lora_1,...)
+            for key, val in kwargs.items():
+                if key.lower().startswith("lora_") and isinstance(val, dict):
+                    lora_configs.append(val)
+
+        print(f"Super LoRA Loader: Parsed {len(lora_configs)} lora configs")
+
+        for value in lora_configs:
+            if not isinstance(value, dict):
+                continue
+
+            enabled = bool(value.get('enabled', value.get('on', False)))
+            if not enabled:
+                continue
+
+            lora_name = value.get('lora', 'None')
+            if not lora_name or lora_name == "None":
+                continue
+
+            strength_model = float(value.get('strength', 1.0))
+            strength_clip = float(value.get('strengthClip', value.get('strengthTwo', strength_model)))
+
+            # Respect missing clip
+            if current_clip is None:
+                if strength_clip != 0:
+                    print(f"Super LoRA Loader: Warning - CLIP strength provided without CLIP; ignoring for '{lora_name}'")
+                strength_clip = 0
+
+            # Apply lora only if any strength is non-zero
+            if (strength_model != 0 or strength_clip != 0) and current_model is not None and LoraLoader is not None:
+                try:
                     lora_path = get_lora_by_filename(lora_name)
                     if lora_path:
                         current_model, current_clip = LoraLoader().load_lora(
@@ -195,36 +128,23 @@ class SuperLoraLoader:
                             strength_model,
                             strength_clip
                         )
+                        print(f"Super LoRA Loader: Loaded '{lora_name}' {strength_model}/{strength_clip}")
+                    else:
+                        print(f"Super LoRA Loader: Could not resolve LoRA file for '{lora_name}'")
+                except Exception as e:
+                    print(f"Super LoRA Loader: Error loading LoRA '{lora_name}': {e}")
+                    # Continue to collect trigger words even if load failed
 
-                        # Ensure trigger word exists: if empty, try metadata, then CivitAI
-                        if not trigger_word:
-                            # 1) Try embedded metadata (if implemented)
-                            try:
-                                meta_words = extract_trigger_words(lora_path) or []
-                            except Exception:
-                                meta_words = []
+            # Collect trigger words (from enabled lorAs)
+            tw = (value.get('triggerWords') or value.get('triggerWord') or '').strip()
+            if tw:
+                trigger_words.append(tw)
+                print(f"Super LoRA Loader: + trigger '{tw}'")
 
-                            if meta_words:
-                                trigger_word = str(meta_words[0]).strip()
-                            elif civitai_service is not None:
-                                try:
-                                    words = civitai_service.get_trigger_words_sync(lora_name) or []
-                                    if words:
-                                        trigger_word = str(words[0]).strip()
-                                except Exception:
-                                    pass
-
-                        # Collect trigger words if now present
-                        if trigger_word:
-                            trigger_words.append(trigger_word)
-
-                        print(f"Super LoRA Loader: Loaded LoRA '{lora_name}' with strengths {strength_model}/{strength_clip}")
-
-            except Exception as e:
-                print(f"Super LoRA Loader: Error loading LoRA '{lora_name}': {e}")
-                continue
-
-        # Combine trigger words
         combined_trigger_words = ", ".join(trigger_words) if trigger_words else ""
+        print(f"Returning trigger words: '{combined_trigger_words}'")
+        print("---------------------------------")
 
         return (current_model, current_clip, combined_trigger_words)
+
+

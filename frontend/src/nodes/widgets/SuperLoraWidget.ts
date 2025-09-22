@@ -373,6 +373,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
   onEnabledDown = (_event: any, _pos: any, node: any): boolean => {
     this.value.enabled = !this.value.enabled;
     node.setDirtyCanvas(true, false);
+    try { WidgetAPI.syncExecutionWidgets(node); } catch {}
     return true;
   };
 
@@ -402,12 +403,14 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
   onStrengthDownClick = (_event: any, _pos: any, node: any): boolean => {
     this.value.strength = Math.max(-2, this.value.strength - 0.1);
     node.setDirtyCanvas(true, false);
+    try { WidgetAPI.syncExecutionWidgets(node); } catch {}
     return true;
   };
 
   onStrengthUpClick = (_event: any, _pos: any, node: any): boolean => {
     this.value.strength = Math.min(2, this.value.strength + 0.1);
     node.setDirtyCanvas(true, false);
+    try { WidgetAPI.syncExecutionWidgets(node); } catch {}
     return true;
   };
 
@@ -482,6 +485,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           // If cleared, do NOT auto-fetch while widget remains. Fetch will occur on re-add or via refresh.
           (this as any).value = { ...this.value };
           node.setDirtyCanvas(true, true);
+          try { WidgetAPI.syncExecutionWidgets(node); } catch {}
         }, place);
         return true;
       }
@@ -498,6 +502,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           try { TriggerWordStore.set(this.value.lora, newVal); } catch {}
           // Do not auto-fetch on clear while widget remains
           node.setDirtyCanvas(true, true);
+          try { WidgetAPI.syncExecutionWidgets(node); } catch {}
         }, event);
         return true;
       }
@@ -523,6 +528,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       (this as any).value = { ...this.value, fetchAttempted: false };
       await this.fetchTriggerWords();
       node.setDirtyCanvas(true, true);
+      try { WidgetAPI.syncExecutionWidgets(node); } catch {}
       return true;
     } catch {
       return false;

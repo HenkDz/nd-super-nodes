@@ -5,19 +5,23 @@ A standalone, modern implementation for loading multiple LoRAs with advanced fea
 
 try:
     from .super_lora_node import SuperLoraLoader
+    from .test_text_node import SuperTestEcho
 except ImportError:
     # Fallback for development/testing
     import sys
     import os
     sys.path.append(os.path.dirname(__file__))
     from super_lora_node import SuperLoraLoader
+    from test_text_node import SuperTestEcho
 
 NODE_CLASS_MAPPINGS = {
-    "SuperLoraLoader": SuperLoraLoader
+    "SuperLoraLoader": SuperLoraLoader,
+    "SuperTestEcho": SuperTestEcho,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SuperLoraLoader": "Super LoRA Loader"
+    "SuperLoraLoader": "Super LoRA Loader",
+    "SuperTestEcho": "Super Test: Echo",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

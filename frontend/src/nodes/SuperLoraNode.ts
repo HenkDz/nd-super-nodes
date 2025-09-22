@@ -53,6 +53,7 @@ export class SuperLoraNode {
       getLoraConfigs: (node: any) => SuperLoraNode.getLoraConfigs(node),
       templateService: SuperLoraNode.templateService,
       civitaiService: SuperLoraNode.civitaiService,
+      syncExecutionWidgets: (node: any) => SuperLoraNode.syncExecutionWidgets(node),
     });
   }
 
@@ -68,6 +69,13 @@ export class SuperLoraNode {
       }
       
       SuperLoraNode.setupAdvancedNode(this);
+      // Purge any legacy execution widgets (ensure nothing visible remains)
+      try {
+        this.widgets = (this.widgets || []).filter((w: any) => {
+          const nm = w?.name || "";
+          return !(nm === 'lora_bundle' || nm.startsWith('lora_'));
+        });
+      } catch {}
     };
 
     // Override drawing and interaction
@@ -98,8 +106,33 @@ export class SuperLoraNode {
     // Override serialization to include custom widget data
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
-      const data = originalSerialize ? originalSerialize.call(this) : {};
+      // Start with the default serialization (ensures normal ComfyUI behavior)
+      const data = originalSerialize.apply(this, arguments);
+
+      // Always inject the backend optional input 'lora_bundle' with a fresh JSON bundle.
+      try {
+        // If a bridge widget exists, update it with a fresh bundle and serialize its value.
+        const freshBundle = SuperLoraNode.buildBundle(this);
+        let bridge = (this.widgets || []).find((w: any) => w?.name === 'lora_bundle');
+        if (!bridge) {
+          // Create once (real widget so ComfyUI serializes it reliably)
+          bridge = this.addWidget('text', 'lora_bundle', freshBundle, () => {}, {});
+        }
+        // Make it effectively invisible and non-interactive while still serializable
+        bridge.type = 'text';
+        bridge.hidden = true;
+        bridge.draw = () => {};
+        bridge.computeSize = () => [0, 0];
+        bridge.value = freshBundle;
+        bridge.serializeValue = () => freshBundle;
+
+        data.inputs = data.inputs || {};
+        data.inputs.lora_bundle = freshBundle;
+      } catch {}
+
+      // Also save our custom UI widget structures for workflow persistence
       data.customWidgets = SuperLoraNode.serializeCustomWidgets(this);
+
       return data;
     };
 
@@ -115,6 +148,15 @@ export class SuperLoraNode {
         // Ensure we have at least a header widget
         SuperLoraNode.setupAdvancedNode(this);
       }
+      // Purge any legacy execution widgets except the lora_bundle bridge
+      try {
+        this.widgets = (this.widgets || []).filter((w: any) => {
+          const nm = w?.name || "";
+          return !(nm.startsWith('lora_') && nm !== 'lora_bundle');
+        });
+      } catch {}
+      // Sync invisible widgets after configuring
+      SuperLoraNode.syncExecutionWidgets(this);
     };
 
     // Add getExtraMenuOptions for additional context menu items
@@ -140,7 +182,7 @@ export class SuperLoraNode {
    * Initialize advanced node with custom widgets
    */
   private static setupAdvancedNode(node: any): void {
-    console.log('Super LoRA Loader: Setting up advanced node');
+    // console.log('Super LoRA Loader: Setting up advanced node');
     
     // Don't reinitialize if already set up
     if (node.customWidgets && node.customWidgets.length > 0) {
@@ -256,8 +298,8 @@ export class SuperLoraNode {
   private static handleMouseEvent(node: any, event: any, pos: any, handler: string): boolean {
     if (!node.customWidgets) return false;
 
-    console.log(`[SuperLoraNode] Mouse event: pos=[${pos[0]}, ${pos[1]}], handler=${handler}`);
-    console.log('Node customWidgets:', node.customWidgets.map((w: any, i: number) => `${i}:${w.constructor.name}`));
+    //console.log(`[SuperLoraNode] Mouse event: pos=[${pos[0]}, ${pos[1]}], handler=${handler}`);
+    //console.log('Node customWidgets:', node.customWidgets.map((w: any, i: number) => `${i}:${w.constructor.name}`));
 
     // Capture last pointer screen position for inline editors
     try {
@@ -276,7 +318,7 @@ export class SuperLoraNode {
 
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
-    console.log(`[SuperLoraNode] Starting currentY: ${currentY}`);
+    // console.log(`[SuperLoraNode] Starting currentY: ${currentY}`);
 
     for (const widget of node.customWidgets) {
       const size = widget.computeSize();
@@ -294,32 +336,32 @@ export class SuperLoraNode {
       const widgetStartY = currentY;
       const widgetEndY = currentY + height;
       if (pos[1] >= widgetStartY && pos[1] <= widgetEndY) {
-        console.log(`[SuperLoraNode] ✓ Click within ${widget.constructor.name} bounds`);
+        // console.log(`[SuperLoraNode] ✓ Click within ${widget.constructor.name} bounds`);
 
         // Adjust local position to account for the widget's offset
         const localPos = [pos[0], pos[1] - widgetStartY];
-        console.log(`[SuperLoraNode] Local position: [${localPos[0]}, ${localPos[1]}], widgetStartY=${widgetStartY}`);
+        // console.log(`[SuperLoraNode] Local position: [${localPos[0]}, ${localPos[1]}], widgetStartY=${widgetStartY}`);
 
         if (widget[handler]) {
-          console.log(`[SuperLoraNode] Calling ${widget.constructor.name}.${handler}()`);
+          // console.log(`[SuperLoraNode] Calling ${widget.constructor.name}.${handler}()`);
           if (widget[handler](event, localPos, node)) {
-            console.log(`[SuperLoraNode] ✓ Handler returned true`);
+            // console.log(`[SuperLoraNode] ✓ Handler returned true`);
             return true;
           } else {
-            console.log(`[SuperLoraNode] ✗ Handler returned false`);
+            // console.log(`[SuperLoraNode] ✗ Handler returned false`);
           }
         } else {
-          console.log(`[SuperLoraNode] ✗ No ${handler} method on ${widget.constructor.name}`);
+          // console.log(`[SuperLoraNode] ✗ No ${handler} method on ${widget.constructor.name}`);
         }
       } else {
-        console.log(`[SuperLoraNode] ✗ Click outside ${widget.constructor.name} bounds`);
+        // console.log(`[SuperLoraNode] ✗ Click outside ${widget.constructor.name} bounds`);
       }
 
       const marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
       currentY += height + marginAfter;
     }
 
-    console.log(`[SuperLoraNode] No widget handled the event`);
+    // console.log(`[SuperLoraNode] No widget handled the event`);
     return false;
   }
 
@@ -428,6 +470,7 @@ export class SuperLoraNode {
           this.organizeByTags(node);
           this.calculateNodeSize(node);
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -435,12 +478,14 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showSeparateStrengths = !node.properties.showSeparateStrengths;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
         content: `${node.properties.autoFetchTriggerWords ? "✅" : "❌"} Auto-fetch Trigger Words`,
         callback: () => {
           node.properties.autoFetchTriggerWords = !node.properties.autoFetchTriggerWords;
+          this.syncExecutionWidgets(node);
         }
       }
     ];
@@ -452,6 +497,7 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showTriggerWords = !node.properties.showTriggerWords;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -459,6 +505,7 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showTagChip = node.properties.showTagChip === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -466,6 +513,7 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showMoveArrows = node.properties.showMoveArrows === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -473,6 +521,7 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showRemoveButton = node.properties.showRemoveButton === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -480,6 +529,7 @@ export class SuperLoraNode {
         callback: () => {
           node.properties.showStrengthControls = node.properties.showStrengthControls === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       }
     ];
@@ -612,6 +662,7 @@ export class SuperLoraNode {
     this.calculateNodeSize(node);
     node.setDirtyCanvas(true, false);
     
+    this.syncExecutionWidgets(node);
     return widget;
   }
 
@@ -625,6 +676,7 @@ export class SuperLoraNode {
       this.organizeByTags(node);
       this.calculateNodeSize(node);
       node.setDirtyCanvas(true, false);
+      this.syncExecutionWidgets(node);
     }
   }
 
@@ -750,8 +802,35 @@ export class SuperLoraNode {
     this.organizeByTags(node);
     this.calculateNodeSize(node);
     node.setDirtyCanvas(true, false);
+    this.syncExecutionWidgets(node);
   }
 
+  /**
+   * (THE BRIDGE) Syncs data from custom lora widgets to invisible execution widgets.
+   */
+  static syncExecutionWidgets(node: any): void {
+    // Do not create any visible/hidden widgets for backend comms. We inject during serialize.
+    // Still mark canvas dirty to refresh visuals as needed.
+    node.setDirtyCanvas(true, true);
+  }
+
+  // Build the JSON bundle the backend expects from current custom widgets
+  private static buildBundle(node: any): string {
+    const loraWidgets = node.customWidgets?.filter((w: any) => w instanceof SuperLoraWidget) || [];
+    const bundle = loraWidgets
+      .filter((w: any) => w?.value?.lora && w.value.lora !== 'None')
+      .map((w: any) => ({
+        lora: w.value.lora,
+        enabled: w.value.enabled,
+        strength: w.value.strength,
+        strengthClip: w.value.strengthClip,
+        triggerWords: w.value.triggerWords,
+        tag: w.value.tag,
+        autoFetched: w.value.autoFetched,
+      }));
+    try { return JSON.stringify(bundle); } catch { return '[]'; }
+  }
+    
   /**
    * Serialize custom widgets for saving
    */
@@ -935,7 +1014,8 @@ export class SuperLoraNode {
       color: #fff;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
     `;
-    const cleanup = () => input.remove();
+    let removedNum = false;
+    const cleanup = () => { if (removedNum) return; removedNum = true; try { input.remove(); } catch {} };
     const commit = () => { const v = parseFloat(input.value); if (!Number.isNaN(v)) onCommit(v); cleanup(); };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') commit();
@@ -1027,7 +1107,8 @@ export class SuperLoraNode {
       color: #fff;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
     `;
-    const cleanup = () => input.remove();
+    let removedTxt = false;
+    const cleanup = () => { if (removedTxt) return; removedTxt = true; try { input.remove(); } catch {} };
     const commit = () => { onCommit(input.value ?? ''); cleanup(); };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') commit();

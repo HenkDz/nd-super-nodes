@@ -22,7 +22,7 @@ export class SuperLoraBaseWidget {
   }
 
   protected handleHitAreas(event: any, pos: any, node: any, handler: 'onDown' | 'onClick'): boolean {
-    console.log(`[${this.constructor.name}] Click at: [${pos[0]}, ${pos[1]}], Handler: ${handler}`);
+    // console.log(`[${this.constructor.name}] Click at: [${pos[0]}, ${pos[1]}], Handler: ${handler}`);
 
     type HitArea = { bounds: number[]; onDown?: (e:any,p:any,n:any)=>boolean; onClick?: (e:any,p:any,n:any)=>boolean; priority?: number };
     const entries: Array<[string, HitArea]> = Object.entries(this.hitAreas as Record<string, HitArea>) as Array<[string, HitArea]>;
@@ -34,17 +34,17 @@ export class SuperLoraBaseWidget {
 
     for (const [key, area] of entries) {
       const bounds = area.bounds;
-      console.log(`  Checking ${key}: bounds=${bounds}`);
+      // console.log(`  Checking ${key}: bounds=${bounds}`);
 
       if (bounds && bounds.length >= 4 && this.isInBounds(pos, bounds)) {
         const fn = (handler === 'onDown' ? area.onDown : area.onClick) || (handler === 'onDown' ? area.onClick : area.onDown);
         if (fn) {
-          console.log(`  ✓ HIT: ${key} - calling ${handler}`);
+          // console.log(`  ✓ HIT: ${key} - calling ${handler}`);
           return fn.call(this, event, pos, node);
         }
       }
     }
-    console.log('  ✗ No hit areas matched');
+    // console.log('  ✗ No hit areas matched');
     return false;
   }
 

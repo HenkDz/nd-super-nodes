@@ -655,7 +655,6 @@ class SuperLoraBaseWidget {
     return this.handleHitAreas(event, pos, node, "onClick");
   }
   handleHitAreas(event, pos, node, handler) {
-    console.log(`[${this.constructor.name}] Click at: [${pos[0]}, ${pos[1]}], Handler: ${handler}`);
     const entries = Object.entries(this.hitAreas);
     entries.sort((a, b) => {
       const pa = a[1]?.priority || 0;
@@ -664,16 +663,13 @@ class SuperLoraBaseWidget {
     });
     for (const [key, area] of entries) {
       const bounds = area.bounds;
-      console.log(`  Checking ${key}: bounds=${bounds}`);
       if (bounds && bounds.length >= 4 && this.isInBounds(pos, bounds)) {
         const fn = (handler === "onDown" ? area.onDown : area.onClick) || (handler === "onDown" ? area.onClick : area.onDown);
         if (fn) {
-          console.log(`  ✓ HIT: ${key} - calling ${handler}`);
           return fn.call(this, event, pos, node);
         }
       }
     }
-    console.log("  ✗ No hit areas matched");
     return false;
   }
   isInBounds(pos, bounds) {
@@ -721,6 +717,9 @@ const WidgetAPI = {
   },
   getLoraConfigs: () => {
     throw new Error("WidgetAPI.getLoraConfigs not initialized");
+  },
+  syncExecutionWidgets: () => {
+    throw new Error("WidgetAPI.syncExecutionWidgets not initialized");
   },
   templateService: null,
   civitaiService: null
@@ -839,6 +838,10 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.onEnabledDown = (_event, _pos, node) => {
       this.value.enabled = !this.value.enabled;
       node.setDirtyCanvas(true, false);
+      try {
+        WidgetAPI.syncExecutionWidgets(node);
+      } catch {
+      }
       return true;
     };
     this.onLoraClick = (event, _pos, node) => {
@@ -866,11 +869,19 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.onStrengthDownClick = (_event, _pos, node) => {
       this.value.strength = Math.max(-2, this.value.strength - 0.1);
       node.setDirtyCanvas(true, false);
+      try {
+        WidgetAPI.syncExecutionWidgets(node);
+      } catch {
+      }
       return true;
     };
     this.onStrengthUpClick = (_event, _pos, node) => {
       this.value.strength = Math.min(2, this.value.strength + 0.1);
       node.setDirtyCanvas(true, false);
+      try {
+        WidgetAPI.syncExecutionWidgets(node);
+      } catch {
+      }
       return true;
     };
     this.onMoveUpClick = (_event, _pos, node) => {
@@ -948,6 +959,10 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
             }
             this.value = { ...this.value };
             node.setDirtyCanvas(true, true);
+            try {
+              WidgetAPI.syncExecutionWidgets(node);
+            } catch {
+            }
           }, place);
           return true;
         }
@@ -967,6 +982,10 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
             } catch {
             }
             node.setDirtyCanvas(true, true);
+            try {
+              WidgetAPI.syncExecutionWidgets(node);
+            } catch {
+            }
           }, event);
           return true;
         }
@@ -997,6 +1016,10 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
         this.value = { ...this.value, fetchAttempted: false };
         await this.fetchTriggerWords();
         node.setDirtyCanvas(true, true);
+        try {
+          WidgetAPI.syncExecutionWidgets(node);
+        } catch {
+        }
         return true;
       } catch {
         return false;
@@ -1597,7 +1620,8 @@ const _SuperLoraNode = class _SuperLoraNode {
       removeLoraWidget: (node, widget) => _SuperLoraNode.removeLoraWidget(node, widget),
       getLoraConfigs: (node) => _SuperLoraNode.getLoraConfigs(node),
       templateService: _SuperLoraNode.templateService,
-      civitaiService: _SuperLoraNode.civitaiService
+      civitaiService: _SuperLoraNode.civitaiService,
+      syncExecutionWidgets: (node) => _SuperLoraNode.syncExecutionWidgets(node)
     });
   }
   /**
@@ -1610,6 +1634,13 @@ const _SuperLoraNode = class _SuperLoraNode {
         originalNodeCreated.apply(this, arguments);
       }
       _SuperLoraNode.setupAdvancedNode(this);
+      try {
+        this.widgets = (this.widgets || []).filter((w) => {
+          const nm = w?.name || "";
+          return !(nm === "lora_bundle" || nm.startsWith("lora_"));
+        });
+      } catch {
+      }
     };
     const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function(ctx) {
@@ -1634,7 +1665,25 @@ const _SuperLoraNode = class _SuperLoraNode {
     };
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
-      const data = originalSerialize ? originalSerialize.call(this) : {};
+      const data = originalSerialize.apply(this, arguments);
+      try {
+        const freshBundle = _SuperLoraNode.buildBundle(this);
+        let bridge = (this.widgets || []).find((w) => w?.name === "lora_bundle");
+        if (!bridge) {
+          bridge = this.addWidget("text", "lora_bundle", freshBundle, () => {
+          }, {});
+        }
+        bridge.type = "text";
+        bridge.hidden = true;
+        bridge.draw = () => {
+        };
+        bridge.computeSize = () => [0, 0];
+        bridge.value = freshBundle;
+        bridge.serializeValue = () => freshBundle;
+        data.inputs = data.inputs || {};
+        data.inputs.lora_bundle = freshBundle;
+      } catch {
+      }
       data.customWidgets = _SuperLoraNode.serializeCustomWidgets(this);
       return data;
     };
@@ -1648,6 +1697,14 @@ const _SuperLoraNode = class _SuperLoraNode {
       } else {
         _SuperLoraNode.setupAdvancedNode(this);
       }
+      try {
+        this.widgets = (this.widgets || []).filter((w) => {
+          const nm = w?.name || "";
+          return !(nm.startsWith("lora_") && nm !== "lora_bundle");
+        });
+      } catch {
+      }
+      _SuperLoraNode.syncExecutionWidgets(this);
     };
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(_canvas) {
@@ -1668,7 +1725,6 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Initialize advanced node with custom widgets
    */
   static setupAdvancedNode(node) {
-    console.log("Super LoRA Loader: Setting up advanced node");
     if (node.customWidgets && node.customWidgets.length > 0) {
       console.log("Super LoRA Loader: Node already initialized, skipping");
       return;
@@ -1756,8 +1812,6 @@ const _SuperLoraNode = class _SuperLoraNode {
   }
   static handleMouseEvent(node, event, pos, handler) {
     if (!node.customWidgets) return false;
-    console.log(`[SuperLoraNode] Mouse event: pos=[${pos[0]}, ${pos[1]}], handler=${handler}`);
-    console.log("Node customWidgets:", node.customWidgets.map((w, i) => `${i}:${w.constructor.name}`));
     try {
       const rect = app?.canvas?.canvas?.getBoundingClientRect?.();
       const ds = app?.canvas?.ds;
@@ -1774,7 +1828,6 @@ const _SuperLoraNode = class _SuperLoraNode {
     }
     const marginDefault = _SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET;
-    console.log(`[SuperLoraNode] Starting currentY: ${currentY}`);
     for (const widget of node.customWidgets) {
       const size = widget.computeSize();
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
@@ -1785,27 +1838,16 @@ const _SuperLoraNode = class _SuperLoraNode {
       const widgetStartY = currentY;
       const widgetEndY = currentY + height;
       if (pos[1] >= widgetStartY && pos[1] <= widgetEndY) {
-        console.log(`[SuperLoraNode] ✓ Click within ${widget.constructor.name} bounds`);
         const localPos = [pos[0], pos[1] - widgetStartY];
-        console.log(`[SuperLoraNode] Local position: [${localPos[0]}, ${localPos[1]}], widgetStartY=${widgetStartY}`);
         if (widget[handler]) {
-          console.log(`[SuperLoraNode] Calling ${widget.constructor.name}.${handler}()`);
           if (widget[handler](event, localPos, node)) {
-            console.log(`[SuperLoraNode] ✓ Handler returned true`);
             return true;
-          } else {
-            console.log(`[SuperLoraNode] ✗ Handler returned false`);
           }
-        } else {
-          console.log(`[SuperLoraNode] ✗ No ${handler} method on ${widget.constructor.name}`);
         }
-      } else {
-        console.log(`[SuperLoraNode] ✗ Click outside ${widget.constructor.name} bounds`);
       }
       const marginAfter = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
       currentY += height + marginAfter;
     }
-    console.log(`[SuperLoraNode] No widget handled the event`);
     return false;
   }
   /**
@@ -1903,6 +1945,7 @@ const _SuperLoraNode = class _SuperLoraNode {
           this.organizeByTags(node);
           this.calculateNodeSize(node);
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -1910,12 +1953,14 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showSeparateStrengths = !node.properties.showSeparateStrengths;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
         content: `${node.properties.autoFetchTriggerWords ? "✅" : "❌"} Auto-fetch Trigger Words`,
         callback: () => {
           node.properties.autoFetchTriggerWords = !node.properties.autoFetchTriggerWords;
+          this.syncExecutionWidgets(node);
         }
       }
     ];
@@ -1925,6 +1970,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showTriggerWords = !node.properties.showTriggerWords;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -1932,6 +1978,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showTagChip = node.properties.showTagChip === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -1939,6 +1986,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showMoveArrows = node.properties.showMoveArrows === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -1946,6 +1994,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showRemoveButton = node.properties.showRemoveButton === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       },
       {
@@ -1953,6 +2002,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         callback: () => {
           node.properties.showStrengthControls = node.properties.showStrengthControls === false ? true : false;
           node.setDirtyCanvas(true, false);
+          this.syncExecutionWidgets(node);
         }
       }
     ];
@@ -2067,6 +2117,7 @@ const _SuperLoraNode = class _SuperLoraNode {
     }
     this.calculateNodeSize(node);
     node.setDirtyCanvas(true, false);
+    this.syncExecutionWidgets(node);
     return widget;
   }
   /**
@@ -2079,6 +2130,7 @@ const _SuperLoraNode = class _SuperLoraNode {
       this.organizeByTags(node);
       this.calculateNodeSize(node);
       node.setDirtyCanvas(true, false);
+      this.syncExecutionWidgets(node);
     }
   }
   /**
@@ -2172,6 +2224,31 @@ const _SuperLoraNode = class _SuperLoraNode {
     this.organizeByTags(node);
     this.calculateNodeSize(node);
     node.setDirtyCanvas(true, false);
+    this.syncExecutionWidgets(node);
+  }
+  /**
+   * (THE BRIDGE) Syncs data from custom lora widgets to invisible execution widgets.
+   */
+  static syncExecutionWidgets(node) {
+    node.setDirtyCanvas(true, true);
+  }
+  // Build the JSON bundle the backend expects from current custom widgets
+  static buildBundle(node) {
+    const loraWidgets = node.customWidgets?.filter((w) => w instanceof SuperLoraWidget) || [];
+    const bundle = loraWidgets.filter((w) => w?.value?.lora && w.value.lora !== "None").map((w) => ({
+      lora: w.value.lora,
+      enabled: w.value.enabled,
+      strength: w.value.strength,
+      strengthClip: w.value.strengthClip,
+      triggerWords: w.value.triggerWords,
+      tag: w.value.tag,
+      autoFetched: w.value.autoFetched
+    }));
+    try {
+      return JSON.stringify(bundle);
+    } catch {
+      return "[]";
+    }
   }
   /**
    * Serialize custom widgets for saving
@@ -2324,7 +2401,15 @@ const _SuperLoraNode = class _SuperLoraNode {
       color: #fff;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
     `;
-    const cleanup = () => input.remove();
+    let removedNum = false;
+    const cleanup = () => {
+      if (removedNum) return;
+      removedNum = true;
+      try {
+        input.remove();
+      } catch {
+      }
+    };
     const commit = () => {
       const v = parseFloat(input.value);
       if (!Number.isNaN(v)) onCommit(v);
@@ -2403,7 +2488,15 @@ const _SuperLoraNode = class _SuperLoraNode {
       color: #fff;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
     `;
-    const cleanup = () => input.remove();
+    let removedTxt = false;
+    const cleanup = () => {
+      if (removedTxt) return;
+      removedTxt = true;
+      try {
+        input.remove();
+      } catch {
+      }
+    };
     const commit = () => {
       onCommit(input.value ?? "");
       cleanup();

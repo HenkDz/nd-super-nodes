@@ -19,6 +19,7 @@ export type WidgetAPIType = {
   addLoraWidget: (node: any, config?: any) => any;
   removeLoraWidget: (node: any, widget: any) => void;
   getLoraConfigs: (node: any) => Array<any>;
+  syncExecutionWidgets: (node: any) => void;
 
   // Backend/service helpers
   templateService: any;
@@ -39,6 +40,7 @@ export const WidgetAPI: WidgetAPIType = {
   addLoraWidget: () => { throw new Error('WidgetAPI.addLoraWidget not initialized'); },
   removeLoraWidget: () => { throw new Error('WidgetAPI.removeLoraWidget not initialized'); },
   getLoraConfigs: () => { throw new Error('WidgetAPI.getLoraConfigs not initialized'); },
+  syncExecutionWidgets: () => { throw new Error('WidgetAPI.syncExecutionWidgets not initialized'); },
   templateService: null,
   civitaiService: null,
 };
