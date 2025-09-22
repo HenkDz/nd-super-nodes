@@ -856,7 +856,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
           canvas.prompt("Model Strength", this.value.strength ?? 1, (v) => {
             const val = parseFloat(v);
             if (!Number.isNaN(val)) {
-              this.value.strength = Math.max(-2, Math.min(2, val));
+              this.value.strength = Math.max(-10, Math.min(10, val));
               node.setDirtyCanvas(true, true);
             }
           }, event);
@@ -867,7 +867,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       return false;
     };
     this.onStrengthDownClick = (_event, _pos, node) => {
-      this.value.strength = Math.max(-2, this.value.strength - 0.1);
+      this.value.strength = Math.max(-10, this.value.strength - 0.1);
       node.setDirtyCanvas(true, false);
       try {
         WidgetAPI.syncExecutionWidgets(node);
@@ -876,7 +876,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       return true;
     };
     this.onStrengthUpClick = (_event, _pos, node) => {
-      this.value.strength = Math.min(2, this.value.strength + 0.1);
+      this.value.strength = Math.min(10, this.value.strength + 0.1);
       node.setDirtyCanvas(true, false);
       try {
         WidgetAPI.syncExecutionWidgets(node);
