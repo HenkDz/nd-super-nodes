@@ -152,10 +152,10 @@ export class LoraWidget {
    * Check if this LoRA is actually doing anything
    */
   isEffective(): boolean {
-    return this.value.enabled && 
-           this.value.lora && 
+    return Boolean(this.value.enabled) &&
+           typeof this.value.lora === 'string' &&
            this.value.lora !== 'None' &&
-           (this.value.strength_model !== 0 || this.value.strength_clip !== 0);
+           (Number(this.value.strength_model) !== 0 || Number(this.value.strength_clip) !== 0);
   }
 
   /**

@@ -102,7 +102,7 @@ const superLoraExtension: ComfyExtension = {
       console.log('Super LoRA Loader: Node created', node.id);
       
       // Additional node setup if needed
-      this.setupNodeEventHandlers(node);
+      this.setupNodeEventHandlers?.(node);
     }
   },
   
@@ -154,7 +154,7 @@ const superLoraExtension: ComfyExtension = {
   }
 };
 
-// Register the extension with ComfyUI
+// Register the extension with ComfyUI (immediate)
 console.log('Super LoRA Loader: Registering extension with ComfyUI');
 app.registerExtension(superLoraExtension);
 console.log('Super LoRA Loader: Extension registered successfully');

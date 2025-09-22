@@ -106,12 +106,16 @@ async def get_civitai_info(request):
         
         civitai_service = get_civitai_service()
         trigger_words = await civitai_service.get_trigger_words(lora_filename)
-        
-        return web.json_response({
+
+        # Return both 'trigger_words' (our API) and 'trainedWords' (frontend compatibility)
+        payload = {
             "lora_filename": lora_filename,
             "trigger_words": trigger_words,
+            "trainedWords": trigger_words,
             "success": True
-        })
+        }
+
+        return web.json_response(payload)
         
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)

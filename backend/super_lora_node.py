@@ -18,14 +18,14 @@ except ImportError:
 # Import local modules
 try:
     from .lora_utils import get_lora_by_filename, extract_trigger_words
-    from .civitai_service import CivitAiService
+    from .civitai_service import CivitAiService, get_civitai_service
 except ImportError:
     # Fallback for development/testing
     import sys
     import os
     sys.path.append(os.path.dirname(__file__))
     from lora_utils import get_lora_by_filename, extract_trigger_words
-    from civitai_service import CivitAiService
+    from civitai_service import CivitAiService, get_civitai_service
 
 
 class SuperLoraLoader:
@@ -144,13 +144,36 @@ class SuperLoraLoader:
 
         print(f"Super LoRA Loader: Processing {len(lora_configs)} LoRA configurations")
 
+        # Prepare CivitAI service for optional trigger fetches
+        civitai_service = None
+        try:
+            civitai_service = get_civitai_service()
+        except Exception:
+            civitai_service = None
+
         # Process each LoRA configuration
         for i, config in enumerate(lora_configs):
-            lora_name = config.get('lora', 'None')
-            enabled = config.get('enabled', True)
-            strength_model = float(config.get('strength', 1.0))
-            strength_clip = float(config.get('strengthClip', strength_model))
-            trigger_word = str(config.get('triggerWords', '')).strip()
+            # Normalize config field names from various frontends/templates
+            lora_name = config.get('lora', 'None') or config.get('file') or config.get('name') or 'None'
+            enabled = config.get('enabled', True) if config.get('enabled') is not None else bool(config.get('on', True))
+
+            # Strengths (accept both camelCase and snake_case and legacy fields)
+            strength_model_val = (
+                config.get('strength_model', None)
+                if config.get('strength_model', None) is not None else config.get('strength', None)
+            )
+            strength_clip_val = (
+                config.get('strength_clip', None)
+                if config.get('strength_clip', None) is not None else (config.get('strengthClip', None) if config.get('strengthClip', None) is not None else config.get('strength', None))
+            )
+            strength_model = float(strength_model_val if strength_model_val is not None else 1.0)
+            strength_clip = float(strength_clip_val if strength_clip_val is not None else strength_model)
+
+            # Trigger word (camelCase or snake_case)
+            tw = config.get('trigger_word', None)
+            if tw is None:
+                tw = config.get('triggerWords', '')
+            trigger_word = str(tw or '').strip()
 
             # Skip if not enabled or no LoRA selected
             if not enabled or lora_name == "None" or not lora_name:
@@ -173,7 +196,25 @@ class SuperLoraLoader:
                             strength_clip
                         )
 
-                        # Collect trigger words if provided
+                        # Ensure trigger word exists: if empty, try metadata, then CivitAI
+                        if not trigger_word:
+                            # 1) Try embedded metadata (if implemented)
+                            try:
+                                meta_words = extract_trigger_words(lora_path) or []
+                            except Exception:
+                                meta_words = []
+
+                            if meta_words:
+                                trigger_word = str(meta_words[0]).strip()
+                            elif civitai_service is not None:
+                                try:
+                                    words = civitai_service.get_trigger_words_sync(lora_name) or []
+                                    if words:
+                                        trigger_word = str(words[0]).strip()
+                                except Exception:
+                                    pass
+
+                        # Collect trigger words if now present
                         if trigger_word:
                             trigger_words.append(trigger_word)
 

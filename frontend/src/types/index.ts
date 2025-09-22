@@ -124,4 +124,6 @@ export interface ComfyExtension {
   beforeRegisterNodeDef?(nodeType: any, nodeData: any): void;
   nodeCreated?(node: SuperLoraNode): void;
   beforeConfigureGraph?(graphData: any): void;
+  // Custom helper we attach at runtime in our extension implementation
+  setupNodeEventHandlers?(node: any): void;
 }
