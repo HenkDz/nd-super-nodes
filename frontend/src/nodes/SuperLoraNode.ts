@@ -176,21 +176,29 @@ export class SuperLoraNode {
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
 
+    // Determine the list of widgets that will actually render (non-zero height and not collapsed-by-tag)
+    const renderable: any[] = [];
     for (const widget of node.customWidgets) {
-      // Check if the widget is collapsed by its tag
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
       if (isCollapsed) continue;
-
       const size = widget.computeSize();
-      // Compact single-row height with small padding; no second row
-      const height = widget instanceof SuperLoraWidget
-        ? 34
-        : size[1];
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
       if (height === 0) continue;
-
-      const marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
-      currentY += height + marginAfter;
+      renderable.push(widget);
     }
+
+    // Accumulate heights including margins, ensuring last collapsed tag gets a bottom margin
+    renderable.forEach((widget, index) => {
+      const size = widget.computeSize();
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+      let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
+      const isLast = index === renderable.length - 1;
+      if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+        // Give extra breathing room to allow resizing without toggling expand
+        marginAfter = Math.max(marginDefault, 8);
+      }
+      currentY += height + marginAfter;
+    });
 
     // Update node size based on content
     const newHeight = Math.max(currentY, 100);
@@ -211,23 +219,27 @@ export class SuperLoraNode {
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
 
+    // Build list of widgets that will render
+    const renderable: any[] = [];
     for (const widget of node.customWidgets) {
       const size = widget.computeSize();
-
-      // Check if the widget is collapsed by its tag
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
-      if (size[1] === 0 || isCollapsed) {
-        // Skip collapsed widgets entirely so groups above pull up
-        continue;
-      }
-
-      // Always single-row height (compact)
       const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-
-      widget.draw(ctx, node, node.size[0], currentY, height);
-      const marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
-      currentY += height + marginAfter;
+      if (height === 0 || isCollapsed) continue;
+      renderable.push(widget);
     }
+
+    renderable.forEach((widget, index) => {
+      const size = widget.computeSize();
+      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+      widget.draw(ctx, node, node.size[0], currentY, height);
+      let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
+      const isLast = index === renderable.length - 1;
+      if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+        marginAfter = Math.max(marginDefault, 8);
+      }
+      currentY += height + marginAfter;
+    });
   }
 
   /**
@@ -359,7 +371,7 @@ export class SuperLoraNode {
             return;
           }
           if (widget) {
-            widget.setLora(id);
+            widget.setLora(id, node);
             this.showToast('✅ LoRA updated', 'success');
           } else {
             this.addLoraWidget(node, { lora: id });
@@ -579,7 +591,7 @@ export class SuperLoraNode {
       }
       // If a LoRA is provided, use setLora to trigger auto-fetch and UI updates
       if (cfgLora && cfgLora !== 'None') {
-        widget.setLora(cfgLora as string);
+        widget.setLora(cfgLora as string, node);
       }
     }
     // Ensure default tag is General when tags are enabled

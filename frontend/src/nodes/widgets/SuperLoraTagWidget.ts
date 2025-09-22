@@ -19,14 +19,14 @@ export class SuperLoraTagWidget extends SuperLoraBaseWidget {
     ctx.save();
     ctx.fillStyle = "#2a2a2a";
     ctx.fillRect(0, posY, w, height);
-    ctx.strokeStyle = "#3a3a3a";
-    ctx.lineWidth = 1;
+    //ctx.strokeStyle = "#3a3a3a";
+    //ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, posY + 0.5);
     ctx.lineTo(w, posY + 0.5);
     ctx.moveTo(0, posY + height - 0.5);
     ctx.lineTo(w, posY + height - 0.5);
-    ctx.stroke();
+    //ctx.stroke();
 
     const midY = height / 2;
     const lorasInTag = this.getLorasInTag(node);

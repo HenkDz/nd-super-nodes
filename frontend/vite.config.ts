@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
-import path from 'path';
+import { resolve } from 'node:path';
+import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   build: {
@@ -9,7 +10,7 @@ export default defineConfig({
     sourcemap: true,
     minify: false, // Keep readable for debugging
     rollupOptions: {
-      input: path.resolve(__dirname, 'src/extension.ts'),
+      input: fileURLToPath(new URL('src/extension.ts', import.meta.url)),
       // Externalize ComfyUI modules that will be available at runtime
       external: ['/scripts/app.js', '/scripts/widgets.js', 'app', 'api', 'ui'],
       output: {
@@ -29,13 +30,14 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src')
+      '@': fileURLToPath(new URL('src', import.meta.url))
     }
   },
   css: {
     preprocessorOptions: {
       scss: {
-        additionalData: `@import "@/styles/variables.scss";`
+        additionalData: `@use "sass:color";
+@use "@/styles/variables.scss" as *;`
       }
     }
   }

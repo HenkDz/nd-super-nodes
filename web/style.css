@@ -5,9 +5,6 @@
 /**
 * Main styles for Super LoRA Loader
 */
-/**
- * SCSS Variables for Super LoRA Loader
- */
 .super-lora-node {
   background: #2d2d2d;
   border: 1px solid #555555;
@@ -20,6 +17,7 @@
   border-color: #4a9eff;
   box-shadow: 0 0 8px rgba(74, 158, 255, 0.3);
 }
+
 .super-lora-header {
   display: flex;
   align-items: center;
@@ -38,6 +36,7 @@
   display: flex;
   gap: 4px;
 }
+
 .super-lora-tag-header {
   display: flex;
   align-items: center;
@@ -97,6 +96,7 @@
 .super-lora-tag-header.tag-custom {
   border-left: 3px solid #17a2b8;
 }
+
 .super-lora-widget {
   display: flex;
   align-items: center;
@@ -195,6 +195,7 @@
 .super-lora-widget .lora-controls .delete-button:hover {
   background: rgba(220, 53, 69, 0.1);
 }
+
 .super-lora-footer {
   padding: 8px;
   background: #3a3a3a;
@@ -205,6 +206,7 @@
   gap: 4px;
   flex-wrap: wrap;
 }
+
 .super-lora-button {
   padding: 4px 8px;
   background: #454545;
@@ -235,9 +237,10 @@
   border-color: #dc3545;
 }
 .super-lora-button.danger:hover {
-  background: rgb(189.2151898734, 32.7848101266, 47.7721518987);
-  border-color: rgb(189.2151898734, 32.7848101266, 47.7721518987);
+  background: rgb(209.4151898734, 36.2848101266, 52.8721518987);
+  border-color: rgb(209.4151898734, 36.2848101266, 52.8721518987);
 }
+
 .super-lora-settings .setting-group {
   margin-bottom: 12px;
 }
@@ -261,6 +264,7 @@
   color: #cccccc;
   font-size: 12px;
 }
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -284,6 +288,7 @@
 .fade-in {
   animation: fadeIn 0.2s ease;
 }
+
 .slide-down {
   animation: slideDown 0.2s ease;
 }

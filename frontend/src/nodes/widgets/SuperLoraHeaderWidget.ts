@@ -52,9 +52,13 @@ export class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     };
 
     const availableWidth = w - (margin * 2);
+    const allEnabled = this.getAllLorasState(node);
+    const toggleText = allEnabled ? 'Disable All' : 'Enable All';
+    const toggleShort = allEnabled ? 'Disable' : 'Enable';
     const buttons = [
-      { id: 'toggleAll', color: "#2a2a2a", text: "Toggle All", shortText: "Toggle", icon: "⏯️", priority: 1 },
       { id: 'addLora', color: "#2a2a2a", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
+      { id: 'toggleAll', color: "#2a2a2a", text: toggleText, shortText: toggleShort, icon: "⏯️", priority: 1 },
+
       { id: 'saveTemplate', color: "#2a2a2a", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
       { id: 'loadTemplate', color: "#2a2a2a", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
       { id: 'settings', color: "#2a2a2a", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }

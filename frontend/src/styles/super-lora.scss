@@ -2,8 +2,6 @@
  * Main styles for Super LoRA Loader
  */
 
-@import 'variables';
-
 .super-lora-node {
   background: $bg-primary;
   border: 1px solid $border-color;
@@ -261,8 +259,8 @@
     border-color: $danger-color;
     
     &:hover {
-      background: darken($danger-color, 10%);
-      border-color: darken($danger-color, 10%);
+      background: color.scale($danger-color, $lightness: -10%);
+      border-color: color.scale($danger-color, $lightness: -10%);
     }
   }
 }

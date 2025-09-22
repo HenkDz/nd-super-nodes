@@ -127,8 +127,15 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       ctx.fillStyle = this.value.enabled ? "#333" : "#2a2a2a";
       ctx.beginPath(); ctx.roundRect(posX, iconY, iconSize, iconSize, 2); ctx.fill();
       ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
-      ctx.fillStyle = "#ddd"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "12px Arial";
+      // Set the icon font color to golden and dim when disabled
+      ctx.fillStyle = "#FFD700"; // Gold color
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "12px Arial";
+      ctx.save();
+      if (!this.value.enabled) { ctx.globalAlpha *= 0.55; }
       ctx.fillText("🏷", posX + iconSize / 2, posY + midY);
+      ctx.restore();
       this.hitAreas.tag.bounds = [posX, 0, iconSize, fullHeight];
       posX += iconSize + 6;
       ctx.font = "12px 'Segoe UI', Arial, sans-serif";
@@ -247,7 +254,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           ctx.fillText('↻', dotCx, dotCy);
         }
         ctx.restore();
-        // Click bounds for refresh
+        // Click bounds for refresh (always enabled)
         const size = dotRadius * 2 + 2;
         this.hitAreas.refresh.bounds = [dotCx - dotRadius, 0, size, fullHeight];
       } else {
@@ -470,6 +477,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           const newVal = String(v ?? "");
           this.value.triggerWords = newVal;
           this.value.autoFetched = false;
+          (this as any).value = { ...this.value, fetchAttempted: false };
           try { TriggerWordStore.set(this.value.lora, newVal); } catch {}
           // If cleared, do NOT auto-fetch while widget remains. Fetch will occur on re-add or via refresh.
           (this as any).value = { ...this.value };
@@ -486,6 +494,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           const newVal = String(v ?? "");
           this.value.triggerWords = newVal;
           this.value.autoFetched = false;
+          (this as any).value = { ...this.value, fetchAttempted: false };
           try { TriggerWordStore.set(this.value.lora, newVal); } catch {}
           // Do not auto-fetch on clear while widget remains
           node.setDirtyCanvas(true, true);
@@ -512,9 +521,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       this.value.triggerWords = '';
       this.value.autoFetched = false;
       (this as any).value = { ...this.value, fetchAttempted: false };
-      if (node?.properties?.autoFetchTriggerWords !== false) {
-        await this.fetchTriggerWords();
-      }
+      await this.fetchTriggerWords();
       node.setDirtyCanvas(true, true);
       return true;
     } catch {
@@ -547,6 +554,10 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
 
   setLora(lora: string, node?: any): void {
     this.value.lora = lora;
+    // Always reset base state on LoRA change to avoid stale trigger words
+    this.value.triggerWords = '';
+    this.value.autoFetched = false;
+    (this as any).value = { ...this.value, fetchAttempted: false };
     if (lora !== "None") {
       // Load any manually stored trigger words first
       try {
@@ -557,8 +568,8 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
           return; // Do not auto-fetch if user provided
         }
       } catch {}
-      // If no manual value and auto-fetch enabled, fetch on add (when node context provided)
-      if (!node || node?.properties?.autoFetchTriggerWords !== false) {
+      // If no manual value and auto-fetch enabled, fetch (only when node context provided)
+      if (node && node?.properties?.autoFetchTriggerWords !== false) {
         this.fetchTriggerWords();
       }
     }

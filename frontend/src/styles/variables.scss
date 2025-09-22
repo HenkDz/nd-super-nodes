@@ -2,6 +2,8 @@
  * SCSS Variables for Super LoRA Loader
  */
 
+@forward "sass:color";
+
 // Colors
 $primary-color: #4a9eff;
 $primary-hover: #3a8eef;
