@@ -200,7 +200,8 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
         } else if (!has && attempted) {
           color = "rgba(253, 126, 20, 0.9)"; // orange, attempted but empty
         } else {
-          showDot = false;
+          // No trigger and not attempted yet: show neutral gray, keep clickable
+          color = "rgba(160, 160, 160, 0.7)";
         }
       if (showDot) {
         ctx.save();
@@ -209,12 +210,42 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
         ctx.beginPath();
         ctx.arc(dotCx, dotCy, dotRadius, 0, Math.PI * 2);
         ctx.fill();
-        // Refresh arrow glyph (↻)
+        // Refresh arrow glyph (↻) with optional spin animation
+        const now = (typeof performance !== 'undefined' && (performance as any).now) ? (performance as any).now() : Date.now();
+        const spinActive = !!(this as any)._refreshSpinActive;
+        const spinEnd = (this as any)._refreshSpinEnd || 0;
+        const spinStart = (this as any)._refreshSpinStarted || 0;
+        const isSpinning = spinActive && now < spinEnd;
+
+        // Schedule next frame while spinning
+        if (isSpinning) {
+          try {
+            if (!(this as any)._spinRafScheduled) {
+              (this as any)._spinRafScheduled = true;
+              (window.requestAnimationFrame || ((cb: any) => setTimeout(cb, 16)))(() => {
+                (this as any)._spinRafScheduled = false;
+                try { node.setDirtyCanvas(true, false); } catch {}
+              });
+            }
+          } catch {}
+        }
+
         ctx.fillStyle = '#111';
         ctx.font = '10px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('↻', dotCx, dotCy);
+        if (isSpinning) {
+          const period = Math.max(500, (this as any)._refreshSpinPeriod || 800); // ms per rotation
+          const progress = ((now - spinStart) % period) / period;
+          const angle = progress * Math.PI * 2;
+          ctx.save();
+          ctx.translate(dotCx, dotCy);
+          ctx.rotate(angle);
+          ctx.fillText('↻', 0, 0);
+          ctx.restore();
+        } else {
+          ctx.fillText('↻', dotCx, dotCy);
+        }
         ctx.restore();
         // Click bounds for refresh
         const size = dotRadius * 2 + 2;
@@ -466,6 +497,15 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
   };
 
   onRefreshClick = async (_event: any, _pos: any, node: any): Promise<boolean> => {
+    // Start a short spin animation immediately for user feedback
+    try {
+      const now = (typeof performance !== 'undefined' && (performance as any).now) ? (performance as any).now() : Date.now();
+      (this as any)._refreshSpinActive = true;
+      (this as any)._refreshSpinStarted = now;
+      (this as any)._refreshSpinEnd = now + 650; // minimum visible spin duration
+      (this as any)._refreshSpinPeriod = 800; // ms per full rotation
+      try { node.setDirtyCanvas(true, false); } catch {}
+    } catch {}
     try {
       // Force re-fetch regardless of saved manual state
       try { TriggerWordStore.remove(this.value.lora); } catch {}
@@ -479,6 +519,15 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       return true;
     } catch {
       return false;
+    } finally {
+      // Ensure the spin continues briefly even if operation is instant
+      try {
+        const now2 = (typeof performance !== 'undefined' && (performance as any).now) ? (performance as any).now() : Date.now();
+        const end = Math.max(((this as any)._refreshSpinEnd || now2), now2 + 200);
+        (this as any)._refreshSpinEnd = end;
+        const timeoutMs = Math.max(0, end - now2);
+        setTimeout(() => { (this as any)._refreshSpinActive = false; try { node.setDirtyCanvas(true, false); } catch {}; }, timeoutMs);
+      } catch {}
     }
   };
 

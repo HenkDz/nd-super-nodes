@@ -982,6 +982,18 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     this.onRefreshClick = async (_event, _pos, node) => {
       var _a;
       try {
+        const now = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+        this._refreshSpinActive = true;
+        this._refreshSpinStarted = now;
+        this._refreshSpinEnd = now + 650;
+        this._refreshSpinPeriod = 800;
+        try {
+          node.setDirtyCanvas(true, false);
+        } catch {
+        }
+      } catch {
+      }
+      try {
         try {
           TriggerWordStore.remove(this.value.lora);
         } catch {
@@ -996,6 +1008,22 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
         return true;
       } catch {
         return false;
+      } finally {
+        try {
+          const now2 = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+          const end = Math.max(this._refreshSpinEnd || now2, now2 + 200);
+          this._refreshSpinEnd = end;
+          const timeoutMs = Math.max(0, end - now2);
+          setTimeout(() => {
+            this._refreshSpinActive = false;
+            try {
+              node.setDirtyCanvas(true, false);
+            } catch {
+            }
+            ;
+          }, timeoutMs);
+        } catch {
+        }
       }
     };
     this.onTagClick = (_event, _pos, node) => {
@@ -1199,7 +1227,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
         } else if (!has && attempted) {
           color = "rgba(253, 126, 20, 0.9)";
         } else {
-          showDot = false;
+          color = "rgba(160, 160, 160, 0.7)";
         }
         if (showDot) {
           ctx.save();
@@ -1207,16 +1235,45 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
           ctx.beginPath();
           ctx.arc(dotCx, dotCy, dotRadius, 0, Math.PI * 2);
           ctx.fill();
+          const now = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+          const spinActive = !!this._refreshSpinActive;
+          const spinEnd = this._refreshSpinEnd || 0;
+          const spinStart = this._refreshSpinStarted || 0;
+          const isSpinning = spinActive && now < spinEnd;
+          if (isSpinning) {
+            try {
+              if (!this._spinRafScheduled) {
+                this._spinRafScheduled = true;
+                (window.requestAnimationFrame || ((cb) => setTimeout(cb, 16)))(() => {
+                  this._spinRafScheduled = false;
+                  try {
+                    node.setDirtyCanvas(true, false);
+                  } catch {
+                  }
+                });
+              }
+            } catch {
+            }
+          }
           ctx.fillStyle = "#111";
           ctx.font = "10px Arial";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText("↻", dotCx, dotCy);
+          if (isSpinning) {
+            const period = Math.max(500, this._refreshSpinPeriod || 800);
+            const progress = (now - spinStart) % period / period;
+            const angle = progress * Math.PI * 2;
+            ctx.save();
+            ctx.translate(dotCx, dotCy);
+            ctx.rotate(angle);
+            ctx.fillText("↻", 0, 0);
+            ctx.restore();
+          } else {
+            ctx.fillText("↻", dotCx, dotCy);
+          }
           ctx.restore();
           const size = dotRadius * 2 + 2;
           this.hitAreas.refresh.bounds = [dotCx - dotRadius, 0, size, fullHeight];
-        } else {
-          this.hitAreas.refresh.bounds = [0, 0, 0, 0];
         }
       } catch {
       }
