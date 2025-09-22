@@ -4,3 +4,6 @@ cooredinaces-fix.md
 progress_report.md
 super_plan_comfy_execution.md
 super_plan.md
+
+backend/__pycache__/
+__pycache__/

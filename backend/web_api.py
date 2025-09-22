@@ -4,7 +4,7 @@ Web API endpoints for Super LoRA Loader
 
 import json
 from aiohttp import web
-from .lora_utils import get_available_loras
+from .lora_utils import get_available_loras, extract_trigger_words
 from .template_manager import get_template_manager
 from .civitai_service import get_civitai_service
 
@@ -106,6 +106,15 @@ async def get_civitai_info(request):
         
         civitai_service = get_civitai_service()
         trigger_words = await civitai_service.get_trigger_words(lora_filename)
+
+        # Fallback: try extracting from LoRA metadata if CivitAI returns nothing
+        if not trigger_words:
+            try:
+                meta_words = extract_trigger_words(lora_filename)
+                if meta_words:
+                    trigger_words = meta_words
+            except Exception:
+                pass
 
         # Return both 'trigger_words' (our API) and 'trainedWords' (frontend compatibility)
         payload = {
