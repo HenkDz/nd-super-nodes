@@ -1,5 +1,6 @@
 import { SuperLoraBaseWidget } from './SuperLoraBaseWidget';
 import { WidgetAPI } from './WidgetAPI';
+import { TriggerWordStore } from '@/services/TriggerWordStore';
 import { SuperLoraTagWidget } from './SuperLoraTagWidget';
 
 export class SuperLoraWidget extends SuperLoraBaseWidget {
@@ -23,6 +24,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
       strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
       triggerWords: { bounds: [0, 0], onClick: this.onTriggerWordsClick, priority: 85 },
+      refresh: { bounds: [0, 0], onClick: this.onRefreshClick, priority: 95 },
       remove: { bounds: [0, 0], onClick: this.onRemoveClick, priority: 100 },
       moveUp: { bounds: [0, 0], onClick: this.onMoveUpClick, priority: 70 },
       moveDown: { bounds: [0, 0], onClick: this.onMoveDownClick, priority: 70 }
@@ -183,32 +185,43 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       this.hitAreas.triggerWords.bounds = [triggerLeft, 0, trigWidth, fullHeight];
 
       try {
-        const dotRadius = 3;
-        const dotCx = triggerLeft + trigWidth - 8;
-        const dotCy = posY + midY;
-        let showDot = false;
-        let color = "rgba(0,0,0,0)";
+      const dotRadius = 7; // larger for clickable icon
+      const dotCx = triggerLeft + trigWidth - 10;
+      const dotCy = posY + midY;
+        let showDot = true;
+        let color = "rgba(74, 158, 255, 0.85)"; // default manual/edited (blue)
         const has = hasTrigger;
         const auto = !!this.value.autoFetched;
         const attempted = !!(this as any).value?.fetchAttempted;
         if (has && auto) {
-          color = "rgba(40, 167, 69, 0.85)";
-          showDot = true;
+          color = "rgba(40, 167, 69, 0.85)"; // green
         } else if (has && !auto) {
-          color = "rgba(74, 158, 255, 0.85)";
-          showDot = true;
+          color = "rgba(74, 158, 255, 0.85)"; // blue manual
         } else if (!has && attempted) {
-          color = "rgba(253, 126, 20, 0.9)";
-          showDot = true;
+          color = "rgba(253, 126, 20, 0.9)"; // orange, attempted but empty
+        } else {
+          showDot = false;
         }
-        if (showDot) {
-          ctx.save();
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(dotCx, dotCy, dotRadius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
+      if (showDot) {
+        ctx.save();
+        // Outer circle
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(dotCx, dotCy, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+        // Refresh arrow glyph (↻)
+        ctx.fillStyle = '#111';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('↻', dotCx, dotCy);
+        ctx.restore();
+        // Click bounds for refresh
+        const size = dotRadius * 2 + 2;
+        this.hitAreas.refresh.bounds = [dotCx - dotRadius, 0, size, fullHeight];
+      } else {
+        this.hitAreas.refresh.bounds = [0,0,0,0];
+      }
       } catch {}
     } else {
       this.hitAreas.triggerWords.bounds = [0, 0, 0, 0];
@@ -422,10 +435,12 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       if (WidgetAPI && typeof WidgetAPI.showInlineText === 'function') {
         const rect = (this as any)._triggerRect;
         const place = rect ? { rect, node, widget: this } : undefined as any;
-        WidgetAPI.showInlineText(event, this.value.triggerWords || "", (v: string) => {
-          this.value.triggerWords = String(v ?? "");
+        WidgetAPI.showInlineText(event, this.value.triggerWords || "", async (v: string) => {
+          const newVal = String(v ?? "");
+          this.value.triggerWords = newVal;
           this.value.autoFetched = false;
-          // Mirror back to instance value to keep any external references in sync
+          try { TriggerWordStore.set(this.value.lora, newVal); } catch {}
+          // If cleared, do NOT auto-fetch while widget remains. Fetch will occur on re-add or via refresh.
           (this as any).value = { ...this.value };
           node.setDirtyCanvas(true, true);
         }, place);
@@ -436,15 +451,35 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       const app = (window as any)?.app;
       const canvas = app?.canvas;
       if (canvas?.prompt) {
-        canvas.prompt("Trigger Words", this.value.triggerWords || "", (v: any) => {
-          this.value.triggerWords = String(v ?? "");
+        canvas.prompt("Trigger Words", this.value.triggerWords || "", async (v: any) => {
+          const newVal = String(v ?? "");
+          this.value.triggerWords = newVal;
           this.value.autoFetched = false;
+          try { TriggerWordStore.set(this.value.lora, newVal); } catch {}
+          // Do not auto-fetch on clear while widget remains
           node.setDirtyCanvas(true, true);
         }, event);
         return true;
       }
     } catch {}
     return false;
+  };
+
+  onRefreshClick = async (_event: any, _pos: any, node: any): Promise<boolean> => {
+    try {
+      // Force re-fetch regardless of saved manual state
+      try { TriggerWordStore.remove(this.value.lora); } catch {}
+      this.value.triggerWords = '';
+      this.value.autoFetched = false;
+      (this as any).value = { ...this.value, fetchAttempted: false };
+      if (node?.properties?.autoFetchTriggerWords !== false) {
+        await this.fetchTriggerWords();
+      }
+      node.setDirtyCanvas(true, true);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   onTagClick = (_event: any, _pos: any, node: any): boolean => {
@@ -461,20 +496,46 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
     return [450, 50];
   }
 
-  setLora(lora: string): void {
+  setLora(lora: string, node?: any): void {
     this.value.lora = lora;
     if (lora !== "None") {
-      this.fetchTriggerWords();
+      // Load any manually stored trigger words first
+      try {
+        const manual = TriggerWordStore.get(lora);
+        if (manual) {
+          this.value.triggerWords = manual;
+          this.value.autoFetched = false;
+          return; // Do not auto-fetch if user provided
+        }
+      } catch {}
+      // If no manual value and auto-fetch enabled, fetch on add (when node context provided)
+      if (!node || node?.properties?.autoFetchTriggerWords !== false) {
+        this.fetchTriggerWords();
+      }
     }
   }
 
   private async fetchTriggerWords(): Promise<void> {
     try {
       (this as any).value.fetchAttempted = true;
+      // Respect manual override
+      try {
+        const manual = TriggerWordStore.get(this.value.lora);
+        if (manual) {
+          this.value.triggerWords = manual;
+          this.value.autoFetched = false;
+          return;
+        }
+      } catch {}
+
       const words = await WidgetAPI.civitaiService.getTriggerWords(this.value.lora);
       if (words.length > 0) {
         this.value.triggerWords = words.join(", ");
         this.value.autoFetched = true;
+        try { TriggerWordStore.set(this.value.lora, this.value.triggerWords); } catch {}
+      } else {
+        // Mark attempted with no result so the indicator shows orange
+        (this as any).value = { ...this.value, fetchAttempted: true };
       }
     } catch (error) {
       console.warn("Failed to fetch trigger words:", error);

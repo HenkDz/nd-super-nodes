@@ -729,6 +729,49 @@ const WidgetAPI = {
 function setWidgetAPI(api) {
   Object.assign(WidgetAPI, api);
 }
+const STORAGE_KEY = "super_lora_manual_triggers_v1";
+function readStore() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+function writeStore(map) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+  }
+}
+const TriggerWordStore = {
+  get(loraFileName) {
+    if (!loraFileName) return null;
+    const map = readStore();
+    const val = map[loraFileName];
+    return typeof val === "string" && val.trim().length ? val : null;
+  },
+  set(loraFileName, triggerWords) {
+    if (!loraFileName) return;
+    const map = readStore();
+    if (typeof triggerWords === "string" && triggerWords.trim().length) {
+      map[loraFileName] = triggerWords.trim();
+    } else {
+      delete map[loraFileName];
+    }
+    writeStore(map);
+  },
+  remove(loraFileName) {
+    if (!loraFileName) return;
+    const map = readStore();
+    if (map[loraFileName] !== void 0) {
+      delete map[loraFileName];
+      writeStore(map);
+    }
+  }
+};
 class SuperLoraTagWidget extends SuperLoraBaseWidget {
   constructor(tag) {
     super(`tag_${tag}`);
@@ -901,9 +944,14 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
         if (WidgetAPI && typeof WidgetAPI.showInlineText === "function") {
           const rect = this._triggerRect;
           const place = rect ? { rect, node, widget: this } : void 0;
-          WidgetAPI.showInlineText(event, this.value.triggerWords || "", (v) => {
-            this.value.triggerWords = String(v ?? "");
+          WidgetAPI.showInlineText(event, this.value.triggerWords || "", async (v) => {
+            const newVal = String(v ?? "");
+            this.value.triggerWords = newVal;
             this.value.autoFetched = false;
+            try {
+              TriggerWordStore.set(this.value.lora, newVal);
+            } catch {
+            }
             this.value = { ...this.value };
             node.setDirtyCanvas(true, true);
           }, place);
@@ -915,9 +963,14 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
         const app2 = window == null ? void 0 : window.app;
         const canvas = app2 == null ? void 0 : app2.canvas;
         if (canvas == null ? void 0 : canvas.prompt) {
-          canvas.prompt("Trigger Words", this.value.triggerWords || "", (v) => {
-            this.value.triggerWords = String(v ?? "");
+          canvas.prompt("Trigger Words", this.value.triggerWords || "", async (v) => {
+            const newVal = String(v ?? "");
+            this.value.triggerWords = newVal;
             this.value.autoFetched = false;
+            try {
+              TriggerWordStore.set(this.value.lora, newVal);
+            } catch {
+            }
             node.setDirtyCanvas(true, true);
           }, event);
           return true;
@@ -925,6 +978,25 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       } catch {
       }
       return false;
+    };
+    this.onRefreshClick = async (_event, _pos, node) => {
+      var _a;
+      try {
+        try {
+          TriggerWordStore.remove(this.value.lora);
+        } catch {
+        }
+        this.value.triggerWords = "";
+        this.value.autoFetched = false;
+        this.value = { ...this.value, fetchAttempted: false };
+        if (((_a = node == null ? void 0 : node.properties) == null ? void 0 : _a.autoFetchTriggerWords) !== false) {
+          await this.fetchTriggerWords();
+        }
+        node.setDirtyCanvas(true, true);
+        return true;
+      } catch {
+        return false;
+      }
     };
     this.onTagClick = (_event, _pos, node) => {
       WidgetAPI.showTagSelector(node, this);
@@ -952,6 +1024,7 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       strengthDown: { bounds: [0, 0], onClick: this.onStrengthDownClick, priority: 90 },
       strengthUp: { bounds: [0, 0], onClick: this.onStrengthUpClick, priority: 90 },
       triggerWords: { bounds: [0, 0], onClick: this.onTriggerWordsClick, priority: 85 },
+      refresh: { bounds: [0, 0], onClick: this.onRefreshClick, priority: 95 },
       remove: { bounds: [0, 0], onClick: this.onRemoveClick, priority: 100 },
       moveUp: { bounds: [0, 0], onClick: this.onMoveUpClick, priority: 70 },
       moveDown: { bounds: [0, 0], onClick: this.onMoveDownClick, priority: 70 }
@@ -1111,23 +1184,22 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
       }
       this.hitAreas.triggerWords.bounds = [triggerLeft, 0, trigWidth, fullHeight];
       try {
-        const dotRadius = 3;
-        const dotCx = triggerLeft + trigWidth - 8;
+        const dotRadius = 7;
+        const dotCx = triggerLeft + trigWidth - 10;
         const dotCy = posY + midY;
-        let showDot = false;
-        let color = "rgba(0,0,0,0)";
+        let showDot = true;
+        let color = "rgba(74, 158, 255, 0.85)";
         const has = hasTrigger;
         const auto = !!this.value.autoFetched;
         const attempted = !!((_g = this.value) == null ? void 0 : _g.fetchAttempted);
         if (has && auto) {
           color = "rgba(40, 167, 69, 0.85)";
-          showDot = true;
         } else if (has && !auto) {
           color = "rgba(74, 158, 255, 0.85)";
-          showDot = true;
         } else if (!has && attempted) {
           color = "rgba(253, 126, 20, 0.9)";
-          showDot = true;
+        } else {
+          showDot = false;
         }
         if (showDot) {
           ctx.save();
@@ -1135,7 +1207,16 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
           ctx.beginPath();
           ctx.arc(dotCx, dotCy, dotRadius, 0, Math.PI * 2);
           ctx.fill();
+          ctx.fillStyle = "#111";
+          ctx.font = "10px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("↻", dotCx, dotCy);
           ctx.restore();
+          const size = dotRadius * 2 + 2;
+          this.hitAreas.refresh.bounds = [dotCx - dotRadius, 0, size, fullHeight];
+        } else {
+          this.hitAreas.refresh.bounds = [0, 0, 0, 0];
         }
       } catch {
       }
@@ -1265,19 +1346,46 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
   computeSize() {
     return [450, 50];
   }
-  setLora(lora) {
+  setLora(lora, node) {
+    var _a;
     this.value.lora = lora;
     if (lora !== "None") {
-      this.fetchTriggerWords();
+      try {
+        const manual = TriggerWordStore.get(lora);
+        if (manual) {
+          this.value.triggerWords = manual;
+          this.value.autoFetched = false;
+          return;
+        }
+      } catch {
+      }
+      if (!node || ((_a = node == null ? void 0 : node.properties) == null ? void 0 : _a.autoFetchTriggerWords) !== false) {
+        this.fetchTriggerWords();
+      }
     }
   }
   async fetchTriggerWords() {
     try {
       this.value.fetchAttempted = true;
+      try {
+        const manual = TriggerWordStore.get(this.value.lora);
+        if (manual) {
+          this.value.triggerWords = manual;
+          this.value.autoFetched = false;
+          return;
+        }
+      } catch {
+      }
       const words = await WidgetAPI.civitaiService.getTriggerWords(this.value.lora);
       if (words.length > 0) {
         this.value.triggerWords = words.join(", ");
         this.value.autoFetched = true;
+        try {
+          TriggerWordStore.set(this.value.lora, this.value.triggerWords);
+        } catch {
+        }
+      } else {
+        this.value = { ...this.value, fetchAttempted: true };
       }
     } catch (error) {
       console.warn("Failed to fetch trigger words:", error);
