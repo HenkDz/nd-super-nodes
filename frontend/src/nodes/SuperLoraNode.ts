@@ -7,6 +7,7 @@ import { LoraConfig } from '@/types';
 import { LoraService } from '@/services/LoraService';
 import { TemplateService } from '@/services/TemplateService';
 import { CivitAiService } from '@/services/CivitAiService';
+import { TagSetService } from '@/services/TagSetService';
 // import { SuperLoraBaseWidget } from './widgets/SuperLoraBaseWidget';
 import { SuperLoraHeaderWidget } from './widgets/SuperLoraHeaderWidget';
 import { SuperLoraTagWidget } from './widgets/SuperLoraTagWidget';
@@ -472,9 +473,13 @@ export class SuperLoraNode {
    * Show tag selector dialog
    */
   static showTagSelector(node: any, widget: SuperLoraWidget): void {
+    const svc = TagSetService.getInstance();
     const existingTags = this.getExistingTags(node);
-    const commonTags = ["General", "Character", "Style", "Quality", "Effect"];
-    const allTags = Array.from(new Set([...commonTags, ...existingTags]));
+    const fromStore = svc.getAll();
+    const allTags = Array.from(new Set([...
+      fromStore,
+      ...existingTags
+    ]));
     const items = allTags.map(tag => ({ id: tag, label: tag }));
 
     this.showSearchOverlay({
@@ -483,11 +488,43 @@ export class SuperLoraNode {
       items,
       allowCreate: true,
       onChoose: (tag: string) => {
+        // Persist in TagSet store if new
+        try { svc.addTag(tag); } catch {}
         widget.value.tag = tag;
         this.organizeByTags(node);
         this.calculateNodeSize(node);
         node.setDirtyCanvas(true, false);
-      }
+      },
+      rightActions: [
+        {
+          icon: '✏️',
+          title: 'Rename tag',
+          onClick: (name: string) => {
+            this.showNameOverlay({
+              title: 'Rename Tag',
+              placeholder: 'New tag name...',
+              initial: name,
+              submitLabel: 'Rename',
+              onCommit: (newName: string) => {
+                const ok = svc.renameTag(name, newName);
+                this.showToast(ok ? '✅ Tag renamed' : '❌ Failed to rename tag', ok ? 'success' : 'error');
+                this.showTagSelector(node, widget);
+              }
+            });
+          }
+        },
+        {
+          icon: '🗑',
+          title: 'Delete tag',
+          onClick: (name: string) => {
+            const okConfirm = confirm(`Delete tag "${name}"?`);
+            if (!okConfirm) return;
+            const ok = svc.deleteTag(name);
+            this.showToast(ok ? '✅ Tag deleted' : '❌ Failed to delete tag', ok ? 'success' : 'error');
+            this.showTagSelector(node, widget);
+          }
+        }
+      ]
     });
   }
 
@@ -1234,6 +1271,8 @@ export class SuperLoraNode {
     const multiEnabled = !!opts.enableMultiToggle;
     let multiMode = false;
     const selectedIds = new Set<string>();
+    // Special key for root (no top-level folder)
+    const ROOT_KEY = '__ROOT__';
 
     // Controls row (e.g., multi-select toggle)
     const controls = document.createElement('div');
@@ -1268,6 +1307,12 @@ export class SuperLoraNode {
       display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
     `;
 
+    // Subfolder chips row (appears when at least one folder chip is active)
+    const subChipWrap = document.createElement('div');
+    subChipWrap.style.cssText = `
+      display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
+    `;
+
     // Gate folder features so other overlays (e.g., tags) are unaffected
     let folderFeatureEnabled = false;
 
@@ -1275,15 +1320,24 @@ export class SuperLoraNode {
     const FILTER_KEY = 'superlora_folder_filters';
     const saved = (() => { try { return JSON.parse(sessionStorage.getItem(FILTER_KEY) || '[]'); } catch { return []; } })();
     const activeFolders = new Set<string>(Array.isArray(saved) ? saved : []);
+    const SUBFILTER_KEY = 'superlora_subfolder_filters';
+    const savedSubs = (() => { try { return JSON.parse(sessionStorage.getItem(SUBFILTER_KEY) || '[]'); } catch { return []; } })();
+    const activeSubfolders = new Set<string>(Array.isArray(savedSubs) ? savedSubs : []);
 
     const renderChips = (folderCounts: Record<string, number>) => {
       chipWrap.innerHTML = '';
       const allFolderNames = Object.keys(folderCounts);
+      // Sort to ensure 'loras - root' chip is always first, then alphabetical
+      allFolderNames.sort((a, b) => {
+        if (a === ROOT_KEY) return -1;
+        if (b === ROOT_KEY) return 1;
+        return a.localeCompare(b);
+      });
       allFolderNames.forEach((name) => {
         const chip = document.createElement('button');
         chip.type = 'button';
         const isActive = activeFolders.has(name);
-        const label = name ? (name.charAt(0).toUpperCase() + name.slice(1)) : name;
+        const label = (name === ROOT_KEY) ? 'loras - root' : name;
         const count = folderCounts[name] ?? 0;
         chip.textContent = `${label} (${count})`;
         chip.style.cssText = `
@@ -1293,9 +1347,82 @@ export class SuperLoraNode {
         chip.addEventListener('click', () => {
           if (activeFolders.has(name)) activeFolders.delete(name); else activeFolders.add(name);
           try { sessionStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(activeFolders))); } catch {}
+          // Prune subfolder selections that no longer belong to active top-level folders
+          try {
+            const toRemove: string[] = [];
+            activeSubfolders.forEach((key) => { const t = key.split('/')[0]; if (!activeFolders.has(t)) toRemove.push(key); });
+            toRemove.forEach((k) => activeSubfolders.delete(k));
+            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
+          } catch {}
           render(search.value);
+          renderSubChips();
         });
         chipWrap.appendChild(chip);
+      });
+    };
+
+    // Build subfolder chips for selected top-level folders
+    const renderSubChips = () => {
+      subChipWrap.innerHTML = '';
+      // Only show sub-chips when at least one top-level folder is active
+      const show = activeFolders.size > 0;
+      subChipWrap.style.display = show ? 'flex' : 'none';
+      if (!show) return;
+
+      // Compute subfolder counts limited to active top-level folders
+      const subCountsByKey: Record<string, number> = {};
+      const subToTops: Record<string, Set<string>> = {};
+      (opts.items || []).forEach((i) => {
+        const parts = i.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        const sub = parts.length > 2 ? parts[1] : ROOT_KEY; // root files directly under top
+        // Do not render subchips for global root (files with no top-level folder)
+        if (top === ROOT_KEY) return;
+        if (!activeFolders.has(top)) return;
+        // For root-level files under a top folder, we include a special ROOT sub-chip
+        if (sub === ROOT_KEY) {
+          const key = `${top}/${ROOT_KEY}`;
+          subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
+          if (!subToTops['(root)']) subToTops['(root)'] = new Set<string>();
+          subToTops['(root)'].add(top);
+          return;
+        }
+        if (!activeFolders.has(top)) return;
+        const key = `${top}/${sub}`;
+        subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
+        if (!subToTops[sub]) subToTops[sub] = new Set<string>();
+        subToTops[sub].add(top);
+      });
+
+      const keys = Object.keys(subCountsByKey).sort();
+      keys.forEach((key) => {
+        const [top, sub] = key.split('/');
+        const isRootSub = (sub === ROOT_KEY);
+        let label: string;
+        if (isRootSub) {
+          // Always show "Top - root" to avoid confusing multiple roots
+          label = `${top} - root`;
+        } else {
+          const duplicate = (subToTops[sub] && subToTops[sub].size > 1);
+          label = duplicate ? `${sub} (${top})` : sub;
+        }
+        const count = subCountsByKey[key] ?? 0;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        const isActive = activeSubfolders.has(key);
+        chip.textContent = `${label} (${count})`;
+        chip.title = `${top}/${sub}`;
+        chip.style.cssText = `
+          padding: 6px 10px; border-radius: 6px; background: ${isActive ? '#333' : '#252525'};
+          color: #fff; border: ${isActive ? '2px solid #66aaff' : '1px solid #3a3a3a'}; cursor: pointer;
+        `;
+        chip.addEventListener('click', () => {
+          if (activeSubfolders.has(key)) activeSubfolders.delete(key); else activeSubfolders.add(key);
+          try { sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders))); } catch {}
+          render(search.value);
+          renderSubChips();
+        });
+        subChipWrap.appendChild(chip);
       });
     };
 
@@ -1329,8 +1456,8 @@ export class SuperLoraNode {
         const folderCounts: Record<string, number> = {};
         termFiltered.forEach(i => {
           const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : '';
-          if (top) folderCounts[top] = (folderCounts[top] || 0) + 1;
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          folderCounts[top] = (folderCounts[top] || 0) + 1;
         });
         renderChips(folderCounts);
       }
@@ -1340,9 +1467,21 @@ export class SuperLoraNode {
       if (folderFeatureEnabled && activeFolders.size > 0) {
         filtered = termFiltered.filter(i => {
           const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : '';
-          return top && activeFolders.has(top);
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          return activeFolders.has(top);
         });
+
+        // Additionally apply subfolder filters when any are selected
+        if (activeSubfolders.size > 0) {
+          filtered = filtered.filter(i => {
+            const parts = i.id.split(/[\\/]/);
+            const top = parts.length > 1 ? parts[0] : '';
+            if (!top) return false;
+            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+            const key = `${top}/${sub}`;
+            return activeSubfolders.has(key);
+          });
+        }
       }
 
       // Note: further folder-based filtering is only applied when folderFeatureEnabled is true (handled above)
@@ -1494,16 +1633,23 @@ export class SuperLoraNode {
     panel.appendChild(search);
     panel.appendChild(controls);
     // Compute unique top-level folders from items once for initial chips container
-    const initialCounts: Record<string, number> = {};
-    (opts.items || []).forEach((i) => {
-      const parts = i.id.split(/[\\/]/);
-      const top = parts.length > 1 ? parts[0] : '';
-      if (top) initialCounts[top] = (initialCounts[top] || 0) + 1;
-    });
-    if (Object.keys(initialCounts).length) {
-      folderFeatureEnabled = true;
-      renderChips(initialCounts);
-      panel.appendChild(chipWrap);
+    const allowFolderChips = (Array.isArray(opts.folderChips) && opts.folderChips.length > 0)
+      || ((opts.items || []).some((i) => /[\\/]/.test(i.id)));
+    if (allowFolderChips) {
+      const initialCounts: Record<string, number> = {};
+      (opts.items || []).forEach((i) => {
+        const parts = i.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        initialCounts[top] = (initialCounts[top] || 0) + 1;
+      });
+      if (Object.keys(initialCounts).length) {
+        folderFeatureEnabled = true;
+        renderChips(initialCounts);
+        panel.appendChild(chipWrap);
+        panel.appendChild(subChipWrap);
+        // Initial render of subfolder chips if folders were pre-selected
+        renderSubChips();
+      }
     }
     panel.appendChild(listWrap);
     panel.appendChild(footer);

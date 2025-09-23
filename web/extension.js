@@ -639,6 +639,84 @@ class CivitAiService {
     }
   }
 }
+const _TagSetService = class _TagSetService {
+  static getInstance() {
+    if (!_TagSetService.instance) {
+      _TagSetService.instance = new _TagSetService();
+    }
+    return _TagSetService.instance;
+  }
+  read() {
+    try {
+      const raw = localStorage.getItem(_TagSetService.STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return this.normalize(arr);
+      }
+    } catch {
+    }
+    this.write(_TagSetService.DEFAULT_TAGS);
+    return [..._TagSetService.DEFAULT_TAGS];
+  }
+  write(tags) {
+    try {
+      const unique = this.normalize(tags);
+      localStorage.setItem(_TagSetService.STORAGE_KEY, JSON.stringify(unique));
+    } catch {
+    }
+  }
+  normalize(tags) {
+    const set = /* @__PURE__ */ new Set();
+    for (const t of tags) {
+      const name = String(t || "").trim();
+      if (!name) continue;
+      set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
+  getAll() {
+    return this.read();
+  }
+  addTag(name) {
+    const n = String(name || "").trim();
+    if (!n) return false;
+    const tags = this.read();
+    if (tags.includes(n)) return false;
+    tags.push(n);
+    this.write(tags);
+    return true;
+  }
+  renameTag(oldName, newName) {
+    const src = String(oldName || "").trim();
+    const dst = String(newName || "").trim();
+    if (!src || !dst || src === dst) return false;
+    const tags = this.read();
+    const idx = tags.indexOf(src);
+    if (idx === -1) return false;
+    if (!tags.includes(dst)) {
+      tags[idx] = dst;
+    } else {
+      tags.splice(idx, 1);
+    }
+    this.write(tags);
+    return true;
+  }
+  deleteTag(name) {
+    const n = String(name || "").trim();
+    if (!n) return false;
+    const tags = this.read();
+    const idx = tags.indexOf(n);
+    if (idx === -1) return false;
+    tags.splice(idx, 1);
+    if (!tags.includes("General")) tags.push("General");
+    this.write(tags);
+    return true;
+  }
+};
+_TagSetService.instance = null;
+_TagSetService.STORAGE_KEY = "superlora_tagset_v1";
+_TagSetService.DEFAULT_TAGS = ["General", "Character", "Style", "Quality", "Effect"];
+let TagSetService = _TagSetService;
 class SuperLoraBaseWidget {
   constructor(name) {
     this.name = name;
@@ -2044,9 +2122,13 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Show tag selector dialog
    */
   static showTagSelector(node, widget) {
+    const svc = TagSetService.getInstance();
     const existingTags = this.getExistingTags(node);
-    const commonTags = ["General", "Character", "Style", "Quality", "Effect"];
-    const allTags = Array.from(/* @__PURE__ */ new Set([...commonTags, ...existingTags]));
+    const fromStore = svc.getAll();
+    const allTags = Array.from(/* @__PURE__ */ new Set([
+      ...fromStore,
+      ...existingTags
+    ]));
     const items = allTags.map((tag) => ({ id: tag, label: tag }));
     this.showSearchOverlay({
       title: "Select Tag",
@@ -2054,11 +2136,45 @@ const _SuperLoraNode = class _SuperLoraNode {
       items,
       allowCreate: true,
       onChoose: (tag) => {
+        try {
+          svc.addTag(tag);
+        } catch {
+        }
         widget.value.tag = tag;
         this.organizeByTags(node);
         this.calculateNodeSize(node);
         node.setDirtyCanvas(true, false);
-      }
+      },
+      rightActions: [
+        {
+          icon: "✏️",
+          title: "Rename tag",
+          onClick: (name) => {
+            this.showNameOverlay({
+              title: "Rename Tag",
+              placeholder: "New tag name...",
+              initial: name,
+              submitLabel: "Rename",
+              onCommit: (newName) => {
+                const ok = svc.renameTag(name, newName);
+                this.showToast(ok ? "✅ Tag renamed" : "❌ Failed to rename tag", ok ? "success" : "error");
+                this.showTagSelector(node, widget);
+              }
+            });
+          }
+        },
+        {
+          icon: "🗑",
+          title: "Delete tag",
+          onClick: (name) => {
+            const okConfirm = confirm(`Delete tag "${name}"?`);
+            if (!okConfirm) return;
+            const ok = svc.deleteTag(name);
+            this.showToast(ok ? "✅ Tag deleted" : "❌ Failed to delete tag", ok ? "success" : "error");
+            this.showTagSelector(node, widget);
+          }
+        }
+      ]
     });
   }
   /**
@@ -2710,6 +2826,7 @@ const _SuperLoraNode = class _SuperLoraNode {
     const multiEnabled = !!opts.enableMultiToggle;
     let multiMode = false;
     const selectedIds = /* @__PURE__ */ new Set();
+    const ROOT_KEY = "__ROOT__";
     const controls = document.createElement("div");
     controls.style.cssText = `
       display: ${multiEnabled ? "flex" : "none"};
@@ -2738,6 +2855,10 @@ const _SuperLoraNode = class _SuperLoraNode {
     chipWrap.style.cssText = `
       display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
     `;
+    const subChipWrap = document.createElement("div");
+    subChipWrap.style.cssText = `
+      display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
+    `;
     let folderFeatureEnabled = false;
     const FILTER_KEY = "superlora_folder_filters";
     const saved = (() => {
@@ -2748,14 +2869,28 @@ const _SuperLoraNode = class _SuperLoraNode {
       }
     })();
     const activeFolders = new Set(Array.isArray(saved) ? saved : []);
+    const SUBFILTER_KEY = "superlora_subfolder_filters";
+    const savedSubs = (() => {
+      try {
+        return JSON.parse(sessionStorage.getItem(SUBFILTER_KEY) || "[]");
+      } catch {
+        return [];
+      }
+    })();
+    const activeSubfolders = new Set(Array.isArray(savedSubs) ? savedSubs : []);
     const renderChips = (folderCounts) => {
       chipWrap.innerHTML = "";
       const allFolderNames = Object.keys(folderCounts);
+      allFolderNames.sort((a, b) => {
+        if (a === ROOT_KEY) return -1;
+        if (b === ROOT_KEY) return 1;
+        return a.localeCompare(b);
+      });
       allFolderNames.forEach((name) => {
         const chip = document.createElement("button");
         chip.type = "button";
         const isActive = activeFolders.has(name);
-        const label = name ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+        const label = name === ROOT_KEY ? "loras - root" : name;
         const count = folderCounts[name] ?? 0;
         chip.textContent = `${label} (${count})`;
         chip.style.cssText = `
@@ -2769,9 +2904,80 @@ const _SuperLoraNode = class _SuperLoraNode {
             sessionStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(activeFolders)));
           } catch {
           }
+          try {
+            const toRemove = [];
+            activeSubfolders.forEach((key) => {
+              const t = key.split("/")[0];
+              if (!activeFolders.has(t)) toRemove.push(key);
+            });
+            toRemove.forEach((k) => activeSubfolders.delete(k));
+            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
+          } catch {
+          }
           render(search.value);
+          renderSubChips();
         });
         chipWrap.appendChild(chip);
+      });
+    };
+    const renderSubChips = () => {
+      subChipWrap.innerHTML = "";
+      const show = activeFolders.size > 0;
+      subChipWrap.style.display = show ? "flex" : "none";
+      if (!show) return;
+      const subCountsByKey = {};
+      const subToTops = {};
+      (opts.items || []).forEach((i) => {
+        const parts = i.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+        if (top === ROOT_KEY) return;
+        if (!activeFolders.has(top)) return;
+        if (sub === ROOT_KEY) {
+          const key2 = `${top}/${ROOT_KEY}`;
+          subCountsByKey[key2] = (subCountsByKey[key2] || 0) + 1;
+          if (!subToTops["(root)"]) subToTops["(root)"] = /* @__PURE__ */ new Set();
+          subToTops["(root)"].add(top);
+          return;
+        }
+        if (!activeFolders.has(top)) return;
+        const key = `${top}/${sub}`;
+        subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
+        if (!subToTops[sub]) subToTops[sub] = /* @__PURE__ */ new Set();
+        subToTops[sub].add(top);
+      });
+      const keys = Object.keys(subCountsByKey).sort();
+      keys.forEach((key) => {
+        const [top, sub] = key.split("/");
+        const isRootSub = sub === ROOT_KEY;
+        let label;
+        if (isRootSub) {
+          label = `${top} - root`;
+        } else {
+          const duplicate = subToTops[sub] && subToTops[sub].size > 1;
+          label = duplicate ? `${sub} (${top})` : sub;
+        }
+        const count = subCountsByKey[key] ?? 0;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        const isActive = activeSubfolders.has(key);
+        chip.textContent = `${label} (${count})`;
+        chip.title = `${top}/${sub}`;
+        chip.style.cssText = `
+          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
+          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
+        `;
+        chip.addEventListener("click", () => {
+          if (activeSubfolders.has(key)) activeSubfolders.delete(key);
+          else activeSubfolders.add(key);
+          try {
+            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
+          } catch {
+          }
+          render(search.value);
+          renderSubChips();
+        });
+        subChipWrap.appendChild(chip);
       });
     };
     const listWrap = document.createElement("div");
@@ -2798,8 +3004,8 @@ const _SuperLoraNode = class _SuperLoraNode {
         const folderCounts = {};
         termFiltered.forEach((i) => {
           const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : "";
-          if (top) folderCounts[top] = (folderCounts[top] || 0) + 1;
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          folderCounts[top] = (folderCounts[top] || 0) + 1;
         });
         renderChips(folderCounts);
       }
@@ -2807,9 +3013,19 @@ const _SuperLoraNode = class _SuperLoraNode {
       if (folderFeatureEnabled && activeFolders.size > 0) {
         filtered = termFiltered.filter((i) => {
           const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : "";
-          return top && activeFolders.has(top);
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          return activeFolders.has(top);
         });
+        if (activeSubfolders.size > 0) {
+          filtered = filtered.filter((i) => {
+            const parts = i.id.split(/[\\/]/);
+            const top = parts.length > 1 ? parts[0] : "";
+            if (!top) return false;
+            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+            const key = `${top}/${sub}`;
+            return activeSubfolders.has(key);
+          });
+        }
       }
       if (opts.allowCreate && q) {
         const exact = opts.items.some((i) => i.label.toLowerCase() === q);
@@ -2957,16 +3173,21 @@ const _SuperLoraNode = class _SuperLoraNode {
     panel.appendChild(header);
     panel.appendChild(search);
     panel.appendChild(controls);
-    const initialCounts = {};
-    (opts.items || []).forEach((i) => {
-      const parts = i.id.split(/[\\/]/);
-      const top = parts.length > 1 ? parts[0] : "";
-      if (top) initialCounts[top] = (initialCounts[top] || 0) + 1;
-    });
-    if (Object.keys(initialCounts).length) {
-      folderFeatureEnabled = true;
-      renderChips(initialCounts);
-      panel.appendChild(chipWrap);
+    const allowFolderChips = Array.isArray(opts.folderChips) && opts.folderChips.length > 0 || (opts.items || []).some((i) => /[\\/]/.test(i.id));
+    if (allowFolderChips) {
+      const initialCounts = {};
+      (opts.items || []).forEach((i) => {
+        const parts = i.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        initialCounts[top] = (initialCounts[top] || 0) + 1;
+      });
+      if (Object.keys(initialCounts).length) {
+        folderFeatureEnabled = true;
+        renderChips(initialCounts);
+        panel.appendChild(chipWrap);
+        panel.appendChild(subChipWrap);
+        renderSubChips();
+      }
     }
     panel.appendChild(listWrap);
     panel.appendChild(footer);
