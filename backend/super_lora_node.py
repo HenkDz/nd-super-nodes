@@ -51,9 +51,10 @@ class SuperLoraLoader:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {},
-            "optional": {
+            "required": {
                 "model": ("MODEL",),
+            },
+            "optional": {
                 "clip": ("CLIP",),
                 # Frontend will provide a JSON array of lora configs here
                 "lora_bundle": ("STRING",),
@@ -61,17 +62,21 @@ class SuperLoraLoader:
             "hidden": {}
         }
     
-    def load_loras(self, model=None, clip=None, lora_bundle: Union[str, None] = None, **kwargs) -> Tuple[Any, Any, str]:
+    def load_loras(self, model, clip=None, lora_bundle: Union[str, None] = None, **kwargs) -> Tuple[Any, Any, str]:
         """
         Load multiple LoRAs from provided bundle and return modified model, clip, and trigger words.
         """
         if not COMFYUI_AVAILABLE:
             print("Super LoRA Loader: ComfyUI not available, cannot load LoRAs")
-            return (model, clip, "")
+            return (model, clip, "")  # Return model unchanged
 
         trigger_words: List[str] = []
         current_model = model
         current_clip = clip
+
+        if current_model is None:
+            print("Super LoRA Loader: No model provided; returning unchanged")
+            return (None, current_clip, "")
 
         print("--- Super LoRA Loader Backend ---")
         print(f"Received lora_bundle length: {len(lora_bundle) if isinstance(lora_bundle, str) else 'None'}")
