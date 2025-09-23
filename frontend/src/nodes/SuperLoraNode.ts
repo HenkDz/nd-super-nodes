@@ -178,7 +178,7 @@ export class SuperLoraNode {
           callback: (_event: any) => SuperLoraNode.showSettingsDialog(this)
         });
         return options;
-      } catch (e) {
+      } catch {
         // Always return a sane default to avoid other extensions crashing when they append
         return [
           null,
@@ -214,8 +214,8 @@ export class SuperLoraNode {
     // Add header widget
     node.customWidgets.push(new SuperLoraHeaderWidget());
     
-    // Set minimum size
-    node.size = [Math.max(node.size[0], 450), Math.max(node.size[1], 100)];
+    // Set minimum height only - preserve user's width preference
+    node.size = [node.size[0], Math.max(node.size[1], 100)];
     
     console.log('Super LoRA Loader: Advanced node setup complete');
   }
@@ -255,12 +255,9 @@ export class SuperLoraNode {
 
     // Update node size based on content
     const newHeight = Math.max(currentY, 100);
-    const newWidth = Math.max(node.size[0], 450);
+    // Preserve the user's preferred width - only update height
     if (node.size[1] !== newHeight) {
       node.size[1] = newHeight;
-    }
-    if (node.size[0] !== newWidth) {
-      node.size[0] = newWidth;
     }
   }
 

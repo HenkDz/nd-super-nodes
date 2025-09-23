@@ -1895,7 +1895,7 @@ const _SuperLoraNode = class _SuperLoraNode {
           callback: (_event) => _SuperLoraNode.showSettingsDialog(this)
         });
         return options;
-      } catch (e) {
+      } catch {
         return [
           null,
           { content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) },
@@ -1919,7 +1919,7 @@ const _SuperLoraNode = class _SuperLoraNode {
     node.properties.autoFetchTriggerWords = node.properties.autoFetchTriggerWords !== false;
     node.customWidgets = node.customWidgets || [];
     node.customWidgets.push(new SuperLoraHeaderWidget());
-    node.size = [Math.max(node.size[0], 450), Math.max(node.size[1], 100)];
+    node.size = [node.size[0], Math.max(node.size[1], 100)];
     console.log("Super LoRA Loader: Advanced node setup complete");
   }
   /**
@@ -1949,12 +1949,8 @@ const _SuperLoraNode = class _SuperLoraNode {
       currentY += height + marginAfter;
     });
     const newHeight = Math.max(currentY, 100);
-    const newWidth = Math.max(node.size[0], 450);
     if (node.size[1] !== newHeight) {
       node.size[1] = newHeight;
-    }
-    if (node.size[0] !== newWidth) {
-      node.size[0] = newWidth;
     }
   }
   /**
