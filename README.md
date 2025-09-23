@@ -24,6 +24,11 @@ A modern, standalone Super LoRA Loader custom node for ComfyUI with advanced fea
 - **Toast Notifications**: Success, warning, and error messages
 - **Responsive Design**: Clean, modern interface
 - **Keyboard Support**: Efficient keyboard shortcuts
+ - **Multi-select Add LoRA Overlay**: Toggle multi-select; single-click add in single mode
+ - **Folder Filter Chips**: Quickly scope lists by top-level folders
+ - **Batch Add Footer**: Add Selected, Clear selection, Cancel in multi-select
+ - **Duplicate-aware Selection**: Already-added items disabled; summary toasts on batch add
+ - **Inline Editors**: In-canvas text/number editors for quick tweaks
 
 ## 🏗️ Architecture
 
@@ -149,6 +154,15 @@ npm run build
 4. **Configure**: Adjust strengths, set trigger words, organize with tags
 5. **Templates**: Save configurations as templates for reuse
 
+### Add LoRA Overlay
+
+- **Single-select (default)**: Click an item to add immediately
+- **Multi-select**: Enable the "Multi-select" toggle at the top
+  - Click items to select/deselect; use the footer to "Add Selected" or "Clear"
+  - Already-added LoRAs are disabled and cannot be selected
+  - If opened from an existing LoRA row, the first selection updates that row; additional selections append as new rows
+- **Folder filters**: Use chips to narrow results by top-level folder; filters persist for the session
+
 ### Settings
 
 Access settings via the ⚙️ Settings button:
@@ -156,6 +170,11 @@ Access settings via the ⚙️ Settings button:
 - **Auto-fetch Trigger Words**: Automatically fetch from CivitAI
 - **Enable Tags**: Organize LoRAs by categories
 - **Show Separate Strengths**: Show model/CLIP strength controls
+- **Show Trigger Words**: Display per-row trigger words pill
+- **Show Tag Chip**: Display a tag chip on each LoRA row
+- **Show Move Arrows**: Up/down arrows for quick reordering
+- **Show Remove Button**: Per-row remove button
+- **Show Strength Controls**: Toggle visibility of strength boxes/buttons
 - **Enable Templates**: Allow saving/loading configurations
 - **Enable Deletion**: Allow removing LoRAs from the list
 - **Enable Sorting**: Allow reordering LoRAs
@@ -177,6 +196,13 @@ Save and load LoRA configurations:
 2. Click "💾 Save Template"
 3. Enter a template name
 4. Use "📂 Load Template" to restore configurations
+
+#### Template Management
+
+From the "Load Template" overlay:
+
+- **✏️ Rename** a template inline
+- **🗑 Delete** a template (confirmation required)
 
 ## 🔗 Integration
 
@@ -244,6 +270,14 @@ For issues and feature requests, please use the GitHub issue tracker.
 - ✅ **Settings Dialog**: Toggleable features (tags, trigger words, separate strengths)
 - ✅ **Context Menus**: Right-click options and additional controls
 - ✅ **Serialization**: Proper save/load of custom widget states
+
+### 🆕 Recent additions
+
+- **Add LoRA Overlay Multi-select**: Toggle multi-select; batch add via footer actions
+- **Folder Filter Chips**: Narrow large lists quickly; session-persistent filters
+- **Duplicate-aware UX**: Already-added LoRAs disabled; batch add shows added/skipped counts
+- **Template Inline Actions**: Rename and delete directly from the Load Template overlay
+- **Expanded Settings Toggles**: Show Tag Chip, Move Arrows, Remove Button, Strength Controls
 
 The Super LoRA Loader now has **all the advanced features** of rgthree's power LoRA loader and more!
 
