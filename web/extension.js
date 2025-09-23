@@ -1804,17 +1804,26 @@ const _SuperLoraNode = class _SuperLoraNode {
     };
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(_canvas) {
-      const options = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
-      options.push(null);
-      options.push({
-        content: "🏷️ Add LoRA",
-        callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0)
-      });
-      options.push({
-        content: "⚙️ Settings",
-        callback: (_event) => _SuperLoraNode.showSettingsDialog(this)
-      });
-      return options;
+      try {
+        const baseOptions = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
+        const options = Array.isArray(baseOptions) ? baseOptions : [];
+        options.push(null);
+        options.push({
+          content: "🏷️ Add LoRA",
+          callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0)
+        });
+        options.push({
+          content: "⚙️ Settings",
+          callback: (_event) => _SuperLoraNode.showSettingsDialog(this)
+        });
+        return options;
+      } catch (e) {
+        return [
+          null,
+          { content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) },
+          { content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) }
+        ];
+      }
     };
   }
   /**
@@ -1996,6 +2005,29 @@ const _SuperLoraNode = class _SuperLoraNode {
             this.addLoraWidget(node, { lora: id });
             this.showToast("✅ LoRA added", "success");
           }
+          node.setDirtyCanvas(true, true);
+        },
+        enableMultiToggle: true,
+        onChooseMany: (ids) => {
+          const added = [];
+          const skipped = [];
+          ids.forEach((id) => {
+            if (this.isDuplicateLora(node, id)) {
+              skipped.push(id);
+              return;
+            }
+            if (widget) {
+              if (added.length === 0) {
+                widget.setLora(id, node);
+                added.push(id);
+                return;
+              }
+            }
+            this.addLoraWidget(node, { lora: id });
+            added.push(id);
+          });
+          if (added.length) this.showToast(`✅ Added ${added.length} LoRA${added.length > 1 ? "s" : ""}`, "success");
+          if (skipped.length) this.showToast(`⚠️ Skipped ${skipped.length} duplicate${skipped.length > 1 ? "s" : ""}`, "warning");
           node.setDirtyCanvas(true, true);
         },
         // Provide folder chips explicitly (top-level folders)
@@ -2675,6 +2707,33 @@ const _SuperLoraNode = class _SuperLoraNode {
       color: #fff;
       outline: none;
     `;
+    const multiEnabled = !!opts.enableMultiToggle;
+    let multiMode = false;
+    const selectedIds = /* @__PURE__ */ new Set();
+    const controls = document.createElement("div");
+    controls.style.cssText = `
+      display: ${multiEnabled ? "flex" : "none"};
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 12px 6px 12px;
+      color: #ddd;
+      font-size: 12px;
+    `;
+    const multiLabel = document.createElement("label");
+    multiLabel.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;";
+    const multiToggle = document.createElement("input");
+    multiToggle.type = "checkbox";
+    multiToggle.addEventListener("change", () => {
+      multiMode = !!multiToggle.checked;
+      render(search.value);
+      renderFooter();
+    });
+    const multiText = document.createElement("span");
+    multiText.textContent = "Multi-select";
+    multiLabel.appendChild(multiToggle);
+    multiLabel.appendChild(multiText);
+    controls.appendChild(multiLabel);
     const chipWrap = document.createElement("div");
     chipWrap.style.cssText = `
       display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
@@ -2774,23 +2833,32 @@ const _SuperLoraNode = class _SuperLoraNode {
         `;
         const leftBtn = document.createElement("button");
         leftBtn.type = "button";
-        leftBtn.textContent = i.label + (i.disabled ? "  (added)" : "");
+        const isSelected = selectedIds.has(i.id);
+        leftBtn.textContent = (multiMode ? isSelected ? "☑ " : "☐ " : "") + i.label + (i.disabled ? "  (added)" : "");
         leftBtn.disabled = !!i.disabled;
         leftBtn.style.cssText = `
           flex: 1;
           text-align: left;
           padding: 10px 12px;
-          background: ${i.disabled ? "#2a2a2a" : "#252525"};
+          background: ${i.disabled ? "#2a2a2a" : multiMode && isSelected ? "#263238" : "#252525"};
           color: ${i.disabled ? "#888" : "#fff"};
           border: 1px solid #3a3a3a;
           border-radius: 6px;
           cursor: ${i.disabled ? "not-allowed" : "pointer"};
         `;
         leftBtn.addEventListener("click", () => {
-          if (!i.disabled) {
+          if (i.disabled) return;
+          if (!multiMode) {
             opts.onChoose(i.id);
             close();
+            return;
           }
+          if (selectedIds.has(i.id)) selectedIds.delete(i.id);
+          else selectedIds.add(i.id);
+          const nowSelected = selectedIds.has(i.id);
+          leftBtn.textContent = (multiMode ? nowSelected ? "☑ " : "☐ " : "") + i.label + (i.disabled ? "  (added)" : "");
+          leftBtn.style.background = nowSelected ? "#263238" : "#252525";
+          renderFooter();
         });
         row.appendChild(leftBtn);
         const actions = [];
@@ -2825,6 +2893,56 @@ const _SuperLoraNode = class _SuperLoraNode {
         list.appendChild(row);
       });
     };
+    const footer = document.createElement("div");
+    footer.style.cssText = `
+      display: none;
+      padding: 10px 12px;
+      border-top: 1px solid #444;
+      background: #1e1e1e;
+      display: ${multiEnabled ? "flex" : "none"};
+      gap: 8px;
+      justify-content: flex-end;
+    `;
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.textContent = "Add Selected (0)";
+    addBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; cursor: pointer; opacity: 0.6;`;
+    addBtn.disabled = true;
+    addBtn.addEventListener("click", () => {
+      if (!multiMode) return;
+      const ids = Array.from(selectedIds);
+      if (!ids.length) return;
+      if (typeof opts.onChooseMany === "function") {
+        opts.onChooseMany(ids);
+      } else {
+        ids.forEach((id) => opts.onChoose(id));
+      }
+      close();
+    });
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.textContent = "Clear";
+    clearBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer;`;
+    clearBtn.addEventListener("click", () => {
+      selectedIds.clear();
+      render(search.value);
+      renderFooter();
+    });
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #444; color: #fff; border: 1px solid #555; cursor: pointer;`;
+    cancelBtn.addEventListener("click", () => close());
+    footer.appendChild(clearBtn);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(addBtn);
+    const renderFooter = () => {
+      const n = selectedIds.size;
+      addBtn.textContent = `Add Selected (${n})`;
+      addBtn.disabled = n === 0;
+      addBtn.style.opacity = n === 0 ? "0.6" : "1";
+      footer.style.display = multiEnabled && multiMode ? "flex" : "none";
+    };
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) close();
     });
@@ -2838,6 +2956,7 @@ const _SuperLoraNode = class _SuperLoraNode {
     listWrap.appendChild(list);
     panel.appendChild(header);
     panel.appendChild(search);
+    panel.appendChild(controls);
     const initialCounts = {};
     (opts.items || []).forEach((i) => {
       const parts = i.id.split(/[\\/]/);
@@ -2850,12 +2969,14 @@ const _SuperLoraNode = class _SuperLoraNode {
       panel.appendChild(chipWrap);
     }
     panel.appendChild(listWrap);
+    panel.appendChild(footer);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     search.addEventListener("input", () => render(search.value));
     setTimeout(() => {
       search.focus();
       render("");
+      renderFooter();
     }, 0);
   }
   static showNameOverlay(opts) {
@@ -2971,10 +3092,14 @@ const superLoraExtension = {
    */
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name === NODE_TYPE) {
-      console.log("Super LoRA Loader: Registering node type");
-      await SuperLoraNode.initialize();
-      SuperLoraNode.setup(nodeType, nodeData);
-      console.log("Super LoRA Loader: Node type registered successfully");
+      try {
+        console.log("Super LoRA Loader: Registering node type");
+        await SuperLoraNode.initialize();
+        SuperLoraNode.setup(nodeType, nodeData);
+        console.log("Super LoRA Loader: Node type registered successfully");
+      } catch (err) {
+        console.error("Super LoRA Loader: Error during node setup; continuing with default registration", err);
+      }
     }
   },
   /**
@@ -2989,7 +3114,7 @@ const superLoraExtension = {
   /**
    * Called before the graph is configured
    */
-  beforeConfigureGraph(graphData) {
+  beforeConfigureGraph(_graphData) {
     console.log("Super LoRA Loader: Configuring graph");
   },
   /**

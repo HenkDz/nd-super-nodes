@@ -4,6 +4,7 @@
  * A modern, standalone implementation of a powerful LoRA loader with advanced features.
  */
 
+// @ts-ignore ComfyUI provides this at runtime
 import { app } from '/scripts/app.js';
 import { ComfyExtension } from './types';
 import { SuperLoraNode } from './nodes/SuperLoraNode';
@@ -82,15 +83,17 @@ const superLoraExtension: ComfyExtension = {
    */
   async beforeRegisterNodeDef(nodeType: any, nodeData: any): Promise<void> {
     if (nodeData.name === NODE_TYPE) {
-      console.log('Super LoRA Loader: Registering node type');
-      
-      // Initialize the SuperLoraNode
-      await SuperLoraNode.initialize();
-      
-      // Set up the node type
-      SuperLoraNode.setup(nodeType, nodeData);
-      
-      console.log('Super LoRA Loader: Node type registered successfully');
+      try {
+        console.log('Super LoRA Loader: Registering node type');
+        // Initialize the SuperLoraNode
+        await SuperLoraNode.initialize();
+        // Set up the node type
+        SuperLoraNode.setup(nodeType, nodeData);
+        console.log('Super LoRA Loader: Node type registered successfully');
+      } catch (err) {
+        // Never block node registration on errors here; log and continue so the node still exists
+        console.error('Super LoRA Loader: Error during node setup; continuing with default registration', err);
+      }
     }
   },
   
@@ -109,7 +112,7 @@ const superLoraExtension: ComfyExtension = {
   /**
    * Called before the graph is configured
    */
-  beforeConfigureGraph(graphData: any): void {
+  beforeConfigureGraph(_graphData: any): void {
     // Pre-process graph data if needed
     console.log('Super LoRA Loader: Configuring graph');
   },

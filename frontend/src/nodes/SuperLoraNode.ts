@@ -162,19 +162,29 @@ export class SuperLoraNode {
     // Add getExtraMenuOptions for additional context menu items
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(_canvas: any) {
-      const options = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
+     
       
-      options.push(null); // Separator
-      options.push({
-        content: "🏷️ Add LoRA",
-        callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined)
-      });
-      options.push({
-        content: "⚙️ Settings",
-        callback: (_event: any) => SuperLoraNode.showSettingsDialog(this)
-      });
-      
-      return options;
+      try {
+        const baseOptions = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
+        const options = Array.isArray(baseOptions) ? baseOptions : [];
+        options.push(null); // Separator
+        options.push({
+          content: "🏷️ Add LoRA",
+          callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined)
+        });
+        options.push({
+          content: "⚙️ Settings",
+          callback: (_event: any) => SuperLoraNode.showSettingsDialog(this)
+        });
+        return options;
+      } catch (e) {
+        // Always return a sane default to avoid other extensions crashing when they append
+        return [
+          null,
+          { content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) },
+          { content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) }
+        ];
+      }
     };
   }
 
@@ -419,6 +429,30 @@ export class SuperLoraNode {
             this.addLoraWidget(node, { lora: id });
             this.showToast('✅ LoRA added', 'success');
           }
+          node.setDirtyCanvas(true, true);
+        },
+        enableMultiToggle: true,
+        onChooseMany: (ids: string[]) => {
+          const added: string[] = [];
+          const skipped: string[] = [];
+          ids.forEach((id) => {
+            if (this.isDuplicateLora(node, id)) {
+              skipped.push(id);
+              return;
+            }
+            if (widget) {
+              // If launched from a specific row, first selection updates that row
+              if (added.length === 0) {
+                widget.setLora(id, node);
+                added.push(id);
+                return;
+              }
+            }
+            this.addLoraWidget(node, { lora: id });
+            added.push(id);
+          });
+          if (added.length) this.showToast(`✅ Added ${added.length} LoRA${added.length>1?'s':''}`, 'success');
+          if (skipped.length) this.showToast(`⚠️ Skipped ${skipped.length} duplicate${skipped.length>1?'s':''}`, 'warning');
           node.setDirtyCanvas(true, true);
         },
         // Provide folder chips explicitly (top-level folders)
@@ -1140,7 +1174,7 @@ export class SuperLoraNode {
   }
 
   // Overlay utilities
-  public static showSearchOverlay(opts: { title: string; placeholder: string; items: { id: string; label: string; disabled?: boolean }[]; onChoose: (id: string) => void; allowCreate?: boolean, onRightAction?: (id: string) => void, rightActionIcon?: string, rightActionTitle?: string, rightActions?: Array<{ icon: string; title?: string; onClick: (id: string) => void }>, folderChips?: string[] }): void {
+  public static showSearchOverlay(opts: { title: string; placeholder: string; items: { id: string; label: string; disabled?: boolean }[]; onChoose: (id: string) => void; allowCreate?: boolean, onRightAction?: (id: string) => void, rightActionIcon?: string, rightActionTitle?: string, rightActions?: Array<{ icon: string; title?: string; onClick: (id: string) => void }>, folderChips?: string[], enableMultiToggle?: boolean, onChooseMany?: (ids: string[]) => void }): void {
     // Ensure only one overlay at a time
     try {
       document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el: any) => el.remove());
@@ -1195,6 +1229,38 @@ export class SuperLoraNode {
       color: #fff;
       outline: none;
     `;
+
+    // Optional multi-select mode (default off)
+    const multiEnabled = !!opts.enableMultiToggle;
+    let multiMode = false;
+    const selectedIds = new Set<string>();
+
+    // Controls row (e.g., multi-select toggle)
+    const controls = document.createElement('div');
+    controls.style.cssText = `
+      display: ${multiEnabled ? 'flex' : 'none'};
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 12px 6px 12px;
+      color: #ddd;
+      font-size: 12px;
+    `;
+    const multiLabel = document.createElement('label');
+    multiLabel.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+    const multiToggle = document.createElement('input');
+    multiToggle.type = 'checkbox';
+    multiToggle.addEventListener('change', () => {
+      multiMode = !!multiToggle.checked;
+      // Do not clear selection when switching modes
+      render(search.value);
+      renderFooter();
+    });
+    const multiText = document.createElement('span');
+    multiText.textContent = 'Multi-select';
+    multiLabel.appendChild(multiToggle);
+    multiLabel.appendChild(multiText);
+    controls.appendChild(multiLabel);
 
     // Folder chips row
     const chipWrap = document.createElement('div');
@@ -1306,19 +1372,33 @@ export class SuperLoraNode {
         // Left main button (select)
         const leftBtn = document.createElement('button');
         leftBtn.type = 'button';
-        leftBtn.textContent = i.label + (i.disabled ? '  (added)' : '');
+        const isSelected = selectedIds.has(i.id);
+        leftBtn.textContent = (multiMode ? ((isSelected ? '☑ ' : '☐ ')) : '') + i.label + (i.disabled ? '  (added)' : '');
         leftBtn.disabled = !!i.disabled;
         leftBtn.style.cssText = `
           flex: 1;
           text-align: left;
           padding: 10px 12px;
-          background: ${i.disabled ? '#2a2a2a' : '#252525'};
+          background: ${i.disabled ? '#2a2a2a' : (multiMode && isSelected ? '#263238' : '#252525')};
           color: ${i.disabled ? '#888' : '#fff'};
           border: 1px solid #3a3a3a;
           border-radius: 6px;
           cursor: ${i.disabled ? 'not-allowed' : 'pointer'};
         `;
-        leftBtn.addEventListener('click', () => { if (!i.disabled) { opts.onChoose(i.id); close(); } });
+        leftBtn.addEventListener('click', () => {
+          if (i.disabled) return;
+          if (!multiMode) {
+            opts.onChoose(i.id);
+            close();
+            return;
+          }
+          if (selectedIds.has(i.id)) selectedIds.delete(i.id); else selectedIds.add(i.id);
+          // Update button text and background without full re-render for slight responsiveness
+          const nowSelected = selectedIds.has(i.id);
+          leftBtn.textContent = (multiMode ? ((nowSelected ? '☑ ' : '☐ ')) : '') + i.label + (i.disabled ? '  (added)' : '');
+          leftBtn.style.background = nowSelected ? '#263238' : '#252525';
+          renderFooter();
+        });
         row.appendChild(leftBtn);
 
         // Right action buttons (e.g., rename, delete) aligned far right
@@ -1352,6 +1432,59 @@ export class SuperLoraNode {
       });
     };
 
+    // Footer for multi-select actions
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+      display: none;
+      padding: 10px 12px;
+      border-top: 1px solid #444;
+      background: #1e1e1e;
+      display: ${multiEnabled ? 'flex' : 'none'};
+      gap: 8px;
+      justify-content: flex-end;
+    `;
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.textContent = 'Add Selected (0)';
+    addBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; cursor: pointer; opacity: 0.6;`;
+    addBtn.disabled = true;
+    addBtn.addEventListener('click', () => {
+      if (!multiMode) return;
+      const ids = Array.from(selectedIds);
+      if (!ids.length) return;
+      if (typeof opts.onChooseMany === 'function') {
+        opts.onChooseMany(ids);
+      } else {
+        ids.forEach((id) => opts.onChoose(id));
+      }
+      close();
+    });
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'Clear';
+    clearBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer;`;
+    clearBtn.addEventListener('click', () => {
+      selectedIds.clear();
+      render(search.value);
+      renderFooter();
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #444; color: #fff; border: 1px solid #555; cursor: pointer;`;
+    cancelBtn.addEventListener('click', () => close());
+    footer.appendChild(clearBtn);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(addBtn);
+
+    const renderFooter = () => {
+      const n = selectedIds.size;
+      addBtn.textContent = `Add Selected (${n})`;
+      addBtn.disabled = n === 0;
+      addBtn.style.opacity = n === 0 ? '0.6' : '1';
+      footer.style.display = (multiEnabled && multiMode) ? 'flex' : 'none';
+    };
+
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey as any); } });
 
@@ -1359,6 +1492,7 @@ export class SuperLoraNode {
     listWrap.appendChild(list);
     panel.appendChild(header);
     panel.appendChild(search);
+    panel.appendChild(controls);
     // Compute unique top-level folders from items once for initial chips container
     const initialCounts: Record<string, number> = {};
     (opts.items || []).forEach((i) => {
@@ -1372,11 +1506,12 @@ export class SuperLoraNode {
       panel.appendChild(chipWrap);
     }
     panel.appendChild(listWrap);
+    panel.appendChild(footer);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
 
     search.addEventListener('input', () => render(search.value));
-    setTimeout(() => { search.focus(); render(''); }, 0);
+    setTimeout(() => { search.focus(); render(''); renderFooter(); }, 0);
   }
 
   public static showNameOverlay(opts: { title: string; placeholder: string; initial?: string; submitLabel?: string; onCommit: (name: string) => void }): void {
