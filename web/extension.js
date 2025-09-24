@@ -717,6 +717,482 @@ _TagSetService.instance = null;
 _TagSetService.STORAGE_KEY = "superlora_tagset_v1";
 _TagSetService.DEFAULT_TAGS = ["General", "Character", "Style", "Quality", "Effect"];
 let TagSetService = _TagSetService;
+class OverlayService {
+  static getInstance() {
+    if (!OverlayService.instance) {
+      OverlayService.instance = new OverlayService();
+    }
+    return OverlayService.instance;
+  }
+  showSearchOverlay(options) {
+    const baseFolderKey = options.baseFolderName || "files";
+    const restoredState = this.restoreOverlayState(baseFolderKey);
+    this.removeExistingOverlays();
+    const items = options.items ?? [];
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-super-lora-overlay", "1");
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 2147483600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(2px);
+    `;
+    const panel = document.createElement("div");
+    panel.style.cssText = `
+      width: 560px;
+      max-height: 70vh;
+      background: #222;
+      border: 1px solid #444;
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    `;
+    const header = document.createElement("div");
+    header.textContent = options.title;
+    header.style.cssText = `
+      padding: 12px 14px;
+      font-weight: 600;
+      border-bottom: 1px solid #444;
+      background: #2a2a2a;
+    `;
+    const search = document.createElement("input");
+    search.type = "text";
+    search.placeholder = options.placeholder;
+    search.style.cssText = `
+      margin: 10px 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      color: #fff;
+      outline: none;
+    `;
+    const multiEnabled = !!options.enableMultiToggle;
+    let multiMode = false;
+    const selectedIds = /* @__PURE__ */ new Set();
+    const ROOT_KEY = "__ROOT__";
+    const controls = document.createElement("div");
+    controls.style.cssText = `
+      display: ${multiEnabled ? "flex" : "none"};
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 12px 6px 12px;
+      color: #ddd;
+      font-size: 12px;
+    `;
+    const multiLabel = document.createElement("label");
+    multiLabel.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;";
+    const multiToggle = document.createElement("input");
+    multiToggle.type = "checkbox";
+    multiToggle.addEventListener("change", () => {
+      multiMode = !!multiToggle.checked;
+      render(search.value);
+      renderFooter();
+    });
+    const multiText = document.createElement("span");
+    multiText.textContent = "Multi-select";
+    multiLabel.appendChild(multiToggle);
+    multiLabel.appendChild(multiText);
+    controls.appendChild(multiLabel);
+    const chipWrap = document.createElement("div");
+    chipWrap.style.cssText = "display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;";
+    const subChipWrap = document.createElement("div");
+    subChipWrap.style.cssText = "display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;";
+    let folderFeatureEnabled = false;
+    const activeFolders = new Set(restoredState.activeFolders);
+    const activeSubfolders = new Set(restoredState.activeSubfolders);
+    const listWrap = document.createElement("div");
+    listWrap.style.cssText = "overflow: auto; padding: 6px 4px 10px 4px;";
+    const list = document.createElement("div");
+    list.style.cssText = "display: flex; flex-direction: column; gap: 4px; padding: 0 8px 8px 8px;";
+    const empty = document.createElement("div");
+    empty.textContent = "No results";
+    empty.style.cssText = "padding: 12px; color: #aaa; display: none;";
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        closeOverlay();
+      }
+    };
+    const closeOverlay = () => {
+      try {
+        overlay.remove();
+      } catch {
+      }
+      document.removeEventListener("keydown", handleKeyDown);
+      this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) closeOverlay();
+    });
+    const renderChips = (folderCounts) => {
+      chipWrap.innerHTML = "";
+      const allFolderNames = Object.keys(folderCounts);
+      allFolderNames.sort((a, b) => {
+        if (a === ROOT_KEY) return -1;
+        if (b === ROOT_KEY) return 1;
+        return a.localeCompare(b);
+      });
+      allFolderNames.forEach((name) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        const isActive = activeFolders.has(name);
+        const baseFolderName = options.baseFolderName || "files";
+        const label = name === ROOT_KEY ? `${baseFolderName} - root` : name;
+        const count = folderCounts[name] ?? 0;
+        chip.textContent = `${label} (${count})`;
+        chip.style.cssText = `
+          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
+          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
+        `;
+        chip.addEventListener("click", () => {
+          if (activeFolders.has(name)) activeFolders.delete(name);
+          else activeFolders.add(name);
+          this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
+          render(search.value);
+          renderSubChips();
+        });
+        chipWrap.appendChild(chip);
+      });
+    };
+    const renderSubChips = () => {
+      subChipWrap.innerHTML = "";
+      const show = activeFolders.size > 0;
+      subChipWrap.style.display = show ? "flex" : "none";
+      if (!show) return;
+      const subCountsByKey = {};
+      const subToTops = {};
+      items.forEach((item) => {
+        const parts = item.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        if (top === ROOT_KEY) return;
+        if (!activeFolders.has(top)) return;
+        const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+        if (sub === ROOT_KEY) {
+          const key2 = `${top}/${ROOT_KEY}`;
+          subCountsByKey[key2] = (subCountsByKey[key2] || 0) + 1;
+          if (!subToTops["(root)"]) subToTops["(root)"] = /* @__PURE__ */ new Set();
+          subToTops["(root)"].add(top);
+          return;
+        }
+        const key = `${top}/${sub}`;
+        subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
+        if (!subToTops[sub]) subToTops[sub] = /* @__PURE__ */ new Set();
+        subToTops[sub].add(top);
+      });
+      Object.keys(subCountsByKey).sort().forEach((key) => {
+        const [top, sub] = key.split("/");
+        const isRootSub = sub === ROOT_KEY;
+        let label;
+        if (isRootSub) {
+          label = `${top} - root`;
+        } else {
+          const duplicate = subToTops[sub]?.size && subToTops[sub].size > 1;
+          label = duplicate ? `${sub} (${top})` : sub;
+        }
+        const count = subCountsByKey[key] ?? 0;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        const isActive = activeSubfolders.has(key);
+        chip.textContent = `${label} (${count})`;
+        chip.title = `${top}/${sub}`;
+        chip.style.cssText = `
+          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
+          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
+        `;
+        chip.addEventListener("click", () => {
+          if (activeSubfolders.has(key)) activeSubfolders.delete(key);
+          else activeSubfolders.add(key);
+          this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
+          render(search.value);
+          renderSubChips();
+        });
+        subChipWrap.appendChild(chip);
+      });
+    };
+    const render = (term) => {
+      list.innerHTML = "";
+      const query = (term || "").trim().toLowerCase();
+      const termFiltered = query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
+      if (folderFeatureEnabled) {
+        const folderCounts = {};
+        termFiltered.forEach((item) => {
+          const parts = item.id.split(/[\\/]/);
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          folderCounts[top] = (folderCounts[top] || 0) + 1;
+        });
+        renderChips(folderCounts);
+      }
+      let filtered = termFiltered;
+      if (folderFeatureEnabled && activeFolders.size > 0) {
+        filtered = termFiltered.filter((item) => {
+          const parts = item.id.split(/[\\/]/);
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          return activeFolders.has(top);
+        });
+        if (activeSubfolders.size > 0) {
+          filtered = filtered.filter((item) => {
+            const parts = item.id.split(/[\\/]/);
+            const top = parts.length > 1 ? parts[0] : "";
+            if (!top) return false;
+            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+            const key = `${top}/${sub}`;
+            return activeSubfolders.has(key);
+          });
+        }
+      }
+      if (options.allowCreate && query) {
+        const exact = items.some((item) => item.label.toLowerCase() === query);
+        if (!exact) {
+          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
+        }
+      }
+      empty.style.display = filtered.length ? "none" : "block";
+      try {
+        header.textContent = `${options.title} (${filtered.length}/${items.length})`;
+      } catch {
+      }
+      const maxToShow = Math.min(2e3, filtered.length);
+      filtered.slice(0, maxToShow).forEach((item) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 0;";
+        const leftBtn = document.createElement("button");
+        leftBtn.type = "button";
+        const isSelected = selectedIds.has(item.id);
+        leftBtn.textContent = (multiMode ? isSelected ? "☑ " : "☐ " : "") + item.label + (item.disabled ? "  (added)" : "");
+        leftBtn.disabled = !!item.disabled;
+        leftBtn.style.cssText = `
+          flex: 1;
+          text-align: left;
+          padding: 10px 12px;
+          background: ${item.disabled ? "#2a2a2a" : multiMode && isSelected ? "#263238" : "#252525"};
+          color: ${item.disabled ? "#888" : "#fff"};
+          border: 1px solid #3a3a3a;
+          border-radius: 6px;
+          cursor: ${item.disabled ? "not-allowed" : "pointer"};
+        `;
+        leftBtn.addEventListener("click", () => {
+          if (item.disabled) return;
+          if (!multiMode) {
+            options.onChoose(item.id);
+            closeOverlay();
+            return;
+          }
+          if (selectedIds.has(item.id)) selectedIds.delete(item.id);
+          else selectedIds.add(item.id);
+          const nowSelected = selectedIds.has(item.id);
+          leftBtn.textContent = (multiMode ? nowSelected ? "☑ " : "☐ " : "") + item.label + (item.disabled ? "  (added)" : "");
+          leftBtn.style.background = nowSelected ? "#263238" : "#252525";
+          renderFooter();
+        });
+        row.appendChild(leftBtn);
+        const actions = [];
+        if (options.rightActions && options.rightActions.length) {
+          actions.push(...options.rightActions);
+        } else if (options.onRightAction) {
+          actions.push({ icon: options.rightActionIcon || "🗑", title: options.rightActionTitle, onClick: options.onRightAction });
+        }
+        if (actions.length && !item.disabled) {
+          actions.forEach((action) => {
+            const rightBtn = document.createElement("button");
+            rightBtn.type = "button";
+            rightBtn.textContent = action.icon;
+            if (action.title) rightBtn.title = action.title;
+            rightBtn.style.cssText = `
+              margin-left: 8px;
+              padding: 10px 12px;
+              background: #3a2a2a;
+              color: #fff;
+              border: 1px solid #5a3a3a;
+              border-radius: 6px;
+              cursor: pointer;
+            `;
+            rightBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              event.preventDefault();
+              action.onClick(item.id);
+            });
+            row.appendChild(rightBtn);
+          });
+        }
+        list.appendChild(row);
+      });
+      renderFooter();
+    };
+    const footer = document.createElement("div");
+    footer.style.cssText = `
+      display: none;
+      padding: 10px 12px;
+      border-top: 1px solid #444;
+      background: #1e1e1e;
+      gap: 8px;
+      justify-content: flex-end;
+    `;
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.textContent = "Clear";
+    clearBtn.style.cssText = "padding: 8px 12px; border-radius: 6px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer;";
+    clearBtn.addEventListener("click", () => {
+      selectedIds.clear();
+      render(search.value);
+    });
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.style.cssText = "padding: 8px 12px; border-radius: 6px; background: #444; color: #fff; border: 1px solid #555; cursor: pointer;";
+    cancelBtn.addEventListener("click", () => closeOverlay());
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.textContent = "Add Selected (0)";
+    addBtn.style.cssText = "padding: 8px 12px; border-radius: 6px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; cursor: pointer; opacity: 0.6;";
+    addBtn.disabled = true;
+    addBtn.addEventListener("click", () => {
+      if (!multiMode) return;
+      const ids = Array.from(selectedIds);
+      if (!ids.length) return;
+      if (typeof options.onChooseMany === "function") {
+        options.onChooseMany(ids);
+      } else {
+        ids.forEach((id) => options.onChoose(id));
+      }
+      closeOverlay();
+    });
+    footer.appendChild(clearBtn);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(addBtn);
+    const renderFooter = () => {
+      const count = selectedIds.size;
+      addBtn.textContent = `Add Selected (${count})`;
+      addBtn.disabled = count === 0;
+      addBtn.style.opacity = count === 0 ? "0.6" : "1";
+      footer.style.display = multiEnabled && multiMode ? "flex" : "none";
+    };
+    listWrap.appendChild(empty);
+    listWrap.appendChild(list);
+    panel.appendChild(header);
+    panel.appendChild(search);
+    panel.appendChild(controls);
+    const allowFolderChips = Array.isArray(options.folderChips) && options.folderChips.length > 0 || items.some((item) => /[\\/]/.test(item.id));
+    if (allowFolderChips) {
+      const initialCounts = {};
+      items.forEach((item) => {
+        const parts = item.id.split(/[\\/]/);
+        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+        initialCounts[top] = (initialCounts[top] || 0) + 1;
+      });
+      if (Object.keys(initialCounts).length) {
+        folderFeatureEnabled = true;
+        renderChips(initialCounts);
+        panel.appendChild(chipWrap);
+        panel.appendChild(subChipWrap);
+        renderSubChips();
+      }
+    }
+    panel.appendChild(listWrap);
+    panel.appendChild(footer);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    search.addEventListener("input", () => render(search.value));
+    setTimeout(() => {
+      try {
+        search.focus();
+      } catch {
+      }
+      render("");
+      renderFooter();
+    }, 0);
+  }
+  showToast(message, type = "info") {
+    console.log(`Super LoRA Loader [${type}]: ${message}`);
+    const colors = {
+      success: "#28a745",
+      warning: "#ffc107",
+      error: "#dc3545",
+      info: "#17a2b8"
+    };
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: ${colors[type]};
+      color: white;
+      padding: 14px 20px;
+      border-radius: 6px;
+      z-index: 10000;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      opacity: 0;
+      transition: all 0.3s ease;
+      max-width: 400px;
+      word-wrap: break-word;
+      border-left: 4px solid rgba(255,255,255,0.3);
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
+    });
+    const timeout = type === "error" ? 5e3 : 3e3;
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(-10px)";
+      setTimeout(() => {
+        try {
+          toast.remove();
+        } catch {
+        }
+      }, 300);
+    }, timeout);
+  }
+  removeExistingOverlays() {
+    try {
+      document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el) => el.remove());
+    } catch {
+    }
+  }
+  restoreOverlayState(baseFolderKey) {
+    try {
+      const folderRaw = sessionStorage.getItem(this.getFolderStorageKey(baseFolderKey));
+      const subRaw = sessionStorage.getItem(this.getSubfolderStorageKey(baseFolderKey));
+      const activeFolders = folderRaw ? JSON.parse(folderRaw) : [];
+      const activeSubfolders = subRaw ? JSON.parse(subRaw) : [];
+      return {
+        activeFolders: Array.isArray(activeFolders) ? activeFolders : [],
+        activeSubfolders: Array.isArray(activeSubfolders) ? activeSubfolders : []
+      };
+    } catch {
+      return { activeFolders: [], activeSubfolders: [] };
+    }
+  }
+  persistOverlayState(baseFolderKey, folders, subfolders) {
+    try {
+      sessionStorage.setItem(this.getFolderStorageKey(baseFolderKey), JSON.stringify(Array.from(folders)));
+      sessionStorage.setItem(this.getSubfolderStorageKey(baseFolderKey), JSON.stringify(Array.from(subfolders)));
+    } catch {
+    }
+  }
+  getFolderStorageKey(baseFolderKey) {
+    const suffix = baseFolderKey ? `_${baseFolderKey}` : "";
+    return `superlora_folder_filters${suffix}`;
+  }
+  getSubfolderStorageKey(baseFolderKey) {
+    const suffix = baseFolderKey ? `_${baseFolderKey}` : "";
+    return `superlora_subfolder_filters${suffix}`;
+  }
+}
 class SuperLoraBaseWidget {
   constructor(name) {
     this.name = name;
@@ -1881,26 +2357,23 @@ const _SuperLoraNode = class _SuperLoraNode {
       _SuperLoraNode.syncExecutionWidgets(this);
     };
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
-    nodeType.prototype.getExtraMenuOptions = function(_canvas) {
+    nodeType.prototype.getExtraMenuOptions = function(_canvas, optionsArr) {
       try {
-        const baseOptions = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
-        const options = Array.isArray(baseOptions) ? baseOptions : [];
+        let options = Array.isArray(optionsArr) ? optionsArr : [];
+        if (originalGetExtraMenuOptions) {
+          const maybe = originalGetExtraMenuOptions.call(this, _canvas, options);
+          if (Array.isArray(maybe)) options = maybe;
+        }
         options.push(null);
-        options.push({
-          content: "🏷️ Add LoRA",
-          callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0)
-        });
-        options.push({
-          content: "⚙️ Settings",
-          callback: (_event) => _SuperLoraNode.showSettingsDialog(this)
-        });
+        options.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
+        options.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
         return options;
       } catch {
-        return [
-          null,
-          { content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) },
-          { content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) }
-        ];
+        const safe = optionsArr && Array.isArray(optionsArr) ? optionsArr : [];
+        safe.push(null);
+        safe.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
+        safe.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
+        return safe;
       }
     };
   }
@@ -2063,7 +2536,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         label: name.replace(/\.(safetensors|ckpt|pt)$/i, ""),
         disabled: usedLoras.has(name)
       }));
-      this.showSearchOverlay({
+      OverlayService.getInstance().showSearchOverlay({
         title: "Add LoRA",
         placeholder: "Search LoRAs...",
         items,
@@ -2107,7 +2580,9 @@ const _SuperLoraNode = class _SuperLoraNode {
         // Provide folder chips explicitly (top-level folders)
         folderChips: Array.from(new Set(
           availableLoras.map((p) => p.split(/[\\/]/)[0]).filter(Boolean)
-        )).sort()
+        )).sort(),
+        // Fix the root chip label for LoRAs
+        baseFolderName: "loras"
       });
     } catch (error) {
       console.error("Failed to show LoRA selector:", error);
@@ -2126,7 +2601,7 @@ const _SuperLoraNode = class _SuperLoraNode {
       ...existingTags
     ]));
     const items = allTags.map((tag) => ({ id: tag, label: tag }));
-    this.showSearchOverlay({
+    OverlayService.getInstance().showSearchOverlay({
       title: "Select Tag",
       placeholder: "Search or create tag...",
       items,
@@ -2512,12 +2987,13 @@ const _SuperLoraNode = class _SuperLoraNode {
    */
   static serializeCustomWidgets(node) {
     if (!node.customWidgets) return null;
+    const cloneProperties = JSON.parse(JSON.stringify(node.properties || {}));
     return {
-      properties: node.properties,
+      properties: cloneProperties,
       widgets: node.customWidgets.map((widget) => ({
         name: widget.name,
         type: widget.constructor.name,
-        value: widget.value
+        value: JSON.parse(JSON.stringify(widget.value))
       }))
     };
   }
@@ -2526,32 +3002,36 @@ const _SuperLoraNode = class _SuperLoraNode {
    */
   static deserializeCustomWidgets(node, data) {
     if (!data) return;
-    if (data.properties) {
-      Object.assign(node.properties, data.properties);
-    }
-    if (data.widgets) {
-      node.customWidgets = [];
-      for (const widgetData of data.widgets) {
-        let widget;
-        switch (widgetData.type) {
-          case "SuperLoraHeaderWidget":
-            widget = new SuperLoraHeaderWidget();
-            break;
-          case "SuperLoraTagWidget":
-            widget = new SuperLoraTagWidget(widgetData.value.tag);
-            break;
-          case "SuperLoraWidget":
-            widget = new SuperLoraWidget(widgetData.name);
-            break;
-          default:
-            continue;
-        }
-        widget.value = { ...widget.value, ...widgetData.value };
-        node.customWidgets.push(widget);
+    try {
+      node.properties = node.properties || {};
+      if (data.properties) {
+        Object.assign(node.properties, JSON.parse(JSON.stringify(data.properties)));
       }
-    }
-    if (!node.customWidgets.find((w) => w instanceof SuperLoraHeaderWidget)) {
-      node.customWidgets.unshift(new SuperLoraHeaderWidget());
+      const restoredWidgets = [];
+      if (Array.isArray(data.widgets)) {
+        for (const widgetData of data.widgets) {
+          let widget;
+          switch (widgetData.type) {
+            case "SuperLoraHeaderWidget":
+              widget = new SuperLoraHeaderWidget();
+              break;
+            case "SuperLoraTagWidget":
+              widget = new SuperLoraTagWidget(widgetData.value?.tag);
+              break;
+            case "SuperLoraWidget":
+              widget = new SuperLoraWidget(widgetData.name);
+              break;
+            default:
+              continue;
+          }
+          widget.value = { ...widget.value, ...JSON.parse(JSON.stringify(widgetData.value || {})) };
+          restoredWidgets.push(widget);
+        }
+      }
+      node.customWidgets = restoredWidgets.length ? restoredWidgets : [new SuperLoraHeaderWidget()];
+    } catch (error) {
+      console.warn("SuperLoRA: Failed to restore custom widgets, resetting defaults", error);
+      node.customWidgets = [new SuperLoraHeaderWidget()];
     }
     node.setDirtyCanvas(true, true);
   }
@@ -2580,44 +3060,7 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Show toast notification with enhanced styling
    */
   static showToast(message, type = "info") {
-    console.log(`Super LoRA Loader [${type}]: ${message}`);
-    const colors = {
-      success: "#28a745",
-      warning: "#ffc107",
-      error: "#dc3545",
-      info: "#17a2b8"
-    };
-    const toast = document.createElement("div");
-    toast.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: ${colors[type]};
-      color: white;
-      padding: 14px 20px;
-      border-radius: 6px;
-      z-index: 10000;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      font-size: 14px;
-      font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      opacity: 0;
-      transition: all 0.3s ease;
-      max-width: 400px;
-      word-wrap: break-word;
-    `;
-    toast.style.borderLeft = "4px solid rgba(255,255,255,0.3)";
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = "1";
-      toast.style.transform = "translateY(0)";
-    }, 10);
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(-10px)";
-      setTimeout(() => toast.remove(), 300);
-    }, type === "error" ? 5e3 : 3e3);
+    OverlayService.getInstance().showToast(message, type);
   }
   // Inline editors for better UX
   static showInlineNumber(event, initial, onCommit) {
@@ -2769,432 +3212,7 @@ const _SuperLoraNode = class _SuperLoraNode {
   }
   // Overlay utilities
   static showSearchOverlay(opts) {
-    try {
-      document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el) => el.remove());
-    } catch {
-    }
-    const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.55);
-      z-index: 2147483600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      backdrop-filter: blur(2px);
-    `;
-    overlay.setAttribute("data-super-lora-overlay", "1");
-    const panel = document.createElement("div");
-    panel.style.cssText = `
-      width: 560px;
-      max-height: 70vh;
-      background: #222;
-      border: 1px solid #444;
-      border-radius: 8px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.4);
-      color: #fff;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    `;
-    const header = document.createElement("div");
-    header.textContent = opts.title;
-    header.style.cssText = `
-      padding: 12px 14px;
-      font-weight: 600;
-      border-bottom: 1px solid #444;
-      background: #2a2a2a;
-    `;
-    const search = document.createElement("input");
-    search.type = "text";
-    search.placeholder = opts.placeholder;
-    search.style.cssText = `
-      margin: 10px 12px;
-      padding: 10px 12px;
-      border-radius: 6px;
-      border: 1px solid #555;
-      background: #1a1a1a;
-      color: #fff;
-      outline: none;
-    `;
-    const multiEnabled = !!opts.enableMultiToggle;
-    let multiMode = false;
-    const selectedIds = /* @__PURE__ */ new Set();
-    const ROOT_KEY = "__ROOT__";
-    const controls = document.createElement("div");
-    controls.style.cssText = `
-      display: ${multiEnabled ? "flex" : "none"};
-      align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
-      padding: 0 12px 6px 12px;
-      color: #ddd;
-      font-size: 12px;
-    `;
-    const multiLabel = document.createElement("label");
-    multiLabel.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;";
-    const multiToggle = document.createElement("input");
-    multiToggle.type = "checkbox";
-    multiToggle.addEventListener("change", () => {
-      multiMode = !!multiToggle.checked;
-      render(search.value);
-      renderFooter();
-    });
-    const multiText = document.createElement("span");
-    multiText.textContent = "Multi-select";
-    multiLabel.appendChild(multiToggle);
-    multiLabel.appendChild(multiText);
-    controls.appendChild(multiLabel);
-    const chipWrap = document.createElement("div");
-    chipWrap.style.cssText = `
-      display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
-    `;
-    const subChipWrap = document.createElement("div");
-    subChipWrap.style.cssText = `
-      display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
-    `;
-    let folderFeatureEnabled = false;
-    const FILTER_KEY = "superlora_folder_filters";
-    const saved = (() => {
-      try {
-        return JSON.parse(sessionStorage.getItem(FILTER_KEY) || "[]");
-      } catch {
-        return [];
-      }
-    })();
-    const activeFolders = new Set(Array.isArray(saved) ? saved : []);
-    const SUBFILTER_KEY = "superlora_subfolder_filters";
-    const savedSubs = (() => {
-      try {
-        return JSON.parse(sessionStorage.getItem(SUBFILTER_KEY) || "[]");
-      } catch {
-        return [];
-      }
-    })();
-    const activeSubfolders = new Set(Array.isArray(savedSubs) ? savedSubs : []);
-    const renderChips = (folderCounts) => {
-      chipWrap.innerHTML = "";
-      const allFolderNames = Object.keys(folderCounts);
-      allFolderNames.sort((a, b) => {
-        if (a === ROOT_KEY) return -1;
-        if (b === ROOT_KEY) return 1;
-        return a.localeCompare(b);
-      });
-      allFolderNames.forEach((name) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        const isActive = activeFolders.has(name);
-        const label = name === ROOT_KEY ? "loras - root" : name;
-        const count = folderCounts[name] ?? 0;
-        chip.textContent = `${label} (${count})`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
-          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
-        `;
-        chip.addEventListener("click", () => {
-          if (activeFolders.has(name)) activeFolders.delete(name);
-          else activeFolders.add(name);
-          try {
-            sessionStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(activeFolders)));
-          } catch {
-          }
-          try {
-            const toRemove = [];
-            activeSubfolders.forEach((key) => {
-              const t = key.split("/")[0];
-              if (!activeFolders.has(t)) toRemove.push(key);
-            });
-            toRemove.forEach((k) => activeSubfolders.delete(k));
-            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
-          } catch {
-          }
-          render(search.value);
-          renderSubChips();
-        });
-        chipWrap.appendChild(chip);
-      });
-    };
-    const renderSubChips = () => {
-      subChipWrap.innerHTML = "";
-      const show = activeFolders.size > 0;
-      subChipWrap.style.display = show ? "flex" : "none";
-      if (!show) return;
-      const subCountsByKey = {};
-      const subToTops = {};
-      (opts.items || []).forEach((i) => {
-        const parts = i.id.split(/[\\/]/);
-        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-        const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
-        if (top === ROOT_KEY) return;
-        if (!activeFolders.has(top)) return;
-        if (sub === ROOT_KEY) {
-          const key2 = `${top}/${ROOT_KEY}`;
-          subCountsByKey[key2] = (subCountsByKey[key2] || 0) + 1;
-          if (!subToTops["(root)"]) subToTops["(root)"] = /* @__PURE__ */ new Set();
-          subToTops["(root)"].add(top);
-          return;
-        }
-        if (!activeFolders.has(top)) return;
-        const key = `${top}/${sub}`;
-        subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
-        if (!subToTops[sub]) subToTops[sub] = /* @__PURE__ */ new Set();
-        subToTops[sub].add(top);
-      });
-      const keys = Object.keys(subCountsByKey).sort();
-      keys.forEach((key) => {
-        const [top, sub] = key.split("/");
-        const isRootSub = sub === ROOT_KEY;
-        let label;
-        if (isRootSub) {
-          label = `${top} - root`;
-        } else {
-          const duplicate = subToTops[sub] && subToTops[sub].size > 1;
-          label = duplicate ? `${sub} (${top})` : sub;
-        }
-        const count = subCountsByKey[key] ?? 0;
-        const chip = document.createElement("button");
-        chip.type = "button";
-        const isActive = activeSubfolders.has(key);
-        chip.textContent = `${label} (${count})`;
-        chip.title = `${top}/${sub}`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
-          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
-        `;
-        chip.addEventListener("click", () => {
-          if (activeSubfolders.has(key)) activeSubfolders.delete(key);
-          else activeSubfolders.add(key);
-          try {
-            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
-          } catch {
-          }
-          render(search.value);
-          renderSubChips();
-        });
-        subChipWrap.appendChild(chip);
-      });
-    };
-    const listWrap = document.createElement("div");
-    listWrap.style.cssText = `
-      overflow: auto;
-      padding: 6px 4px 10px 4px;
-    `;
-    const list = document.createElement("div");
-    list.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 0 8px 8px 8px;
-    `;
-    const empty = document.createElement("div");
-    empty.textContent = "No results";
-    empty.style.cssText = "padding: 12px; color: #aaa; display: none;";
-    const close = () => overlay.remove();
-    const render = (term) => {
-      list.innerHTML = "";
-      const q = (term || "").trim().toLowerCase();
-      const termFiltered = q ? opts.items.filter((i) => i.label.toLowerCase().includes(q)) : opts.items;
-      if (folderFeatureEnabled) {
-        const folderCounts = {};
-        termFiltered.forEach((i) => {
-          const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-          folderCounts[top] = (folderCounts[top] || 0) + 1;
-        });
-        renderChips(folderCounts);
-      }
-      let filtered = termFiltered;
-      if (folderFeatureEnabled && activeFolders.size > 0) {
-        filtered = termFiltered.filter((i) => {
-          const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-          return activeFolders.has(top);
-        });
-        if (activeSubfolders.size > 0) {
-          filtered = filtered.filter((i) => {
-            const parts = i.id.split(/[\\/]/);
-            const top = parts.length > 1 ? parts[0] : "";
-            if (!top) return false;
-            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
-            const key = `${top}/${sub}`;
-            return activeSubfolders.has(key);
-          });
-        }
-      }
-      if (opts.allowCreate && q) {
-        const exact = opts.items.some((i) => i.label.toLowerCase() === q);
-        if (!exact) {
-          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
-        }
-      }
-      empty.style.display = filtered.length ? "none" : "block";
-      try {
-        header.textContent = `${opts.title} (${filtered.length}/${opts.items.length})`;
-      } catch {
-      }
-      const maxToShow = Math.min(2e3, filtered.length);
-      filtered.slice(0, maxToShow).forEach((i) => {
-        const row = document.createElement("div");
-        row.style.cssText = `
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 0;
-        `;
-        const leftBtn = document.createElement("button");
-        leftBtn.type = "button";
-        const isSelected = selectedIds.has(i.id);
-        leftBtn.textContent = (multiMode ? isSelected ? "☑ " : "☐ " : "") + i.label + (i.disabled ? "  (added)" : "");
-        leftBtn.disabled = !!i.disabled;
-        leftBtn.style.cssText = `
-          flex: 1;
-          text-align: left;
-          padding: 10px 12px;
-          background: ${i.disabled ? "#2a2a2a" : multiMode && isSelected ? "#263238" : "#252525"};
-          color: ${i.disabled ? "#888" : "#fff"};
-          border: 1px solid #3a3a3a;
-          border-radius: 6px;
-          cursor: ${i.disabled ? "not-allowed" : "pointer"};
-        `;
-        leftBtn.addEventListener("click", () => {
-          if (i.disabled) return;
-          if (!multiMode) {
-            opts.onChoose(i.id);
-            close();
-            return;
-          }
-          if (selectedIds.has(i.id)) selectedIds.delete(i.id);
-          else selectedIds.add(i.id);
-          const nowSelected = selectedIds.has(i.id);
-          leftBtn.textContent = (multiMode ? nowSelected ? "☑ " : "☐ " : "") + i.label + (i.disabled ? "  (added)" : "");
-          leftBtn.style.background = nowSelected ? "#263238" : "#252525";
-          renderFooter();
-        });
-        row.appendChild(leftBtn);
-        const actions = [];
-        if (opts.rightActions && opts.rightActions.length) {
-          actions.push(...opts.rightActions);
-        } else if (opts.onRightAction) {
-          actions.push({ icon: opts.rightActionIcon || "🗑", title: opts.rightActionTitle, onClick: opts.onRightAction });
-        }
-        if (actions.length && !i.disabled) {
-          actions.forEach((action) => {
-            const rightBtn = document.createElement("button");
-            rightBtn.type = "button";
-            rightBtn.textContent = action.icon;
-            if (action.title) rightBtn.title = action.title;
-            rightBtn.style.cssText = `
-              margin-left: 8px;
-              padding: 10px 12px;
-              background: #3a2a2a;
-              color: #fff;
-              border: 1px solid #5a3a3a;
-              border-radius: 6px;
-              cursor: pointer;
-            `;
-            rightBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              action.onClick(i.id);
-            });
-            row.appendChild(rightBtn);
-          });
-        }
-        list.appendChild(row);
-      });
-    };
-    const footer = document.createElement("div");
-    footer.style.cssText = `
-      display: none;
-      padding: 10px 12px;
-      border-top: 1px solid #444;
-      background: #1e1e1e;
-      display: ${multiEnabled ? "flex" : "none"};
-      gap: 8px;
-      justify-content: flex-end;
-    `;
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.textContent = "Add Selected (0)";
-    addBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; cursor: pointer; opacity: 0.6;`;
-    addBtn.disabled = true;
-    addBtn.addEventListener("click", () => {
-      if (!multiMode) return;
-      const ids = Array.from(selectedIds);
-      if (!ids.length) return;
-      if (typeof opts.onChooseMany === "function") {
-        opts.onChooseMany(ids);
-      } else {
-        ids.forEach((id) => opts.onChoose(id));
-      }
-      close();
-    });
-    const clearBtn = document.createElement("button");
-    clearBtn.type = "button";
-    clearBtn.textContent = "Clear";
-    clearBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer;`;
-    clearBtn.addEventListener("click", () => {
-      selectedIds.clear();
-      render(search.value);
-      renderFooter();
-    });
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.textContent = "Cancel";
-    cancelBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #444; color: #fff; border: 1px solid #555; cursor: pointer;`;
-    cancelBtn.addEventListener("click", () => close());
-    footer.appendChild(clearBtn);
-    footer.appendChild(cancelBtn);
-    footer.appendChild(addBtn);
-    const renderFooter = () => {
-      const n = selectedIds.size;
-      addBtn.textContent = `Add Selected (${n})`;
-      addBtn.disabled = n === 0;
-      addBtn.style.opacity = n === 0 ? "0.6" : "1";
-      footer.style.display = multiEnabled && multiMode ? "flex" : "none";
-    };
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) close();
-    });
-    document.addEventListener("keydown", function onKey(e) {
-      if (e.key === "Escape") {
-        close();
-        document.removeEventListener("keydown", onKey);
-      }
-    });
-    listWrap.appendChild(empty);
-    listWrap.appendChild(list);
-    panel.appendChild(header);
-    panel.appendChild(search);
-    panel.appendChild(controls);
-    const allowFolderChips = Array.isArray(opts.folderChips) && opts.folderChips.length > 0 || (opts.items || []).some((i) => /[\\/]/.test(i.id));
-    if (allowFolderChips) {
-      const initialCounts = {};
-      (opts.items || []).forEach((i) => {
-        const parts = i.id.split(/[\\/]/);
-        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-        initialCounts[top] = (initialCounts[top] || 0) + 1;
-      });
-      if (Object.keys(initialCounts).length) {
-        folderFeatureEnabled = true;
-        renderChips(initialCounts);
-        panel.appendChild(chipWrap);
-        panel.appendChild(subChipWrap);
-        renderSubChips();
-      }
-    }
-    panel.appendChild(listWrap);
-    panel.appendChild(footer);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-    search.addEventListener("input", () => render(search.value));
-    setTimeout(() => {
-      search.focus();
-      render("");
-      renderFooter();
-    }, 0);
+    OverlayService.getInstance().showSearchOverlay(opts);
   }
   static showNameOverlay(opts) {
     const overlay = document.createElement("div");
@@ -3244,6 +3262,907 @@ _SuperLoraNode.MARGIN_SMALL = 2;
 _SuperLoraNode.loraService = LoraService.getInstance();
 _SuperLoraNode.templateService = TemplateService.getInstance();
 let SuperLoraNode = _SuperLoraNode;
+const _FilePickerService = class _FilePickerService {
+  constructor() {
+    this.fileCache = /* @__PURE__ */ new Map();
+    this.cacheTimestamps = /* @__PURE__ */ new Map();
+  }
+  static getInstance() {
+    if (!_FilePickerService.instance) {
+      _FilePickerService.instance = new _FilePickerService();
+    }
+    return _FilePickerService.instance;
+  }
+  static getSupportedFileTypes() {
+    return this.FILE_TYPES;
+  }
+  /**
+   * Get files for a specific file type
+   */
+  async getFilesForType(fileType) {
+    const config = _FilePickerService.FILE_TYPES[fileType];
+    if (!config) {
+      throw new Error(`Unknown file type: ${fileType}`);
+    }
+    const cacheKey = `files_${fileType}`;
+    const cached = this.getCachedFiles(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set("folder_name", config.folderName);
+      params.set("extensions", config.fileExtensions.join(","));
+      let response = await fetch(`/super_lora/files?${params.toString()}`, { method: "GET" });
+      if (!response.ok) {
+        response = await fetch(`/superlora/files?${params.toString()}`, { method: "GET" });
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch files: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const files = data.files?.map((file) => ({
+        id: file.path,
+        label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft)$/i, ""),
+        path: file.path,
+        filename: file.name,
+        extension: file.extension || "",
+        size: file.size,
+        modified: file.modified
+      })) || [];
+      this.setCachedFiles(cacheKey, files);
+      return files;
+    } catch (error) {
+      console.error(`Error fetching ${fileType} files:`, error);
+      return [];
+    }
+  }
+  /**
+   * Show enhanced file picker overlay
+   */
+  showFilePicker(fileType, onSelect, options = {}) {
+    const config = _FilePickerService.FILE_TYPES[fileType];
+    if (!config) {
+      throw new Error(`Unknown file type: ${fileType}`);
+    }
+    const {
+      title = `Select ${config.displayName}`,
+      multiSelect = false,
+      onMultiSelect,
+      currentValue
+    } = options;
+    this.getFilesForType(fileType).then((files) => {
+      const items = files.map((file) => ({
+        id: file.id,
+        label: file.label,
+        disabled: currentValue === file.id
+      }));
+      const overlay = OverlayService.getInstance();
+      const topFolders = Array.from(new Set(
+        files.map((file) => {
+          const rel = file.path || "";
+          const parts = rel.split(/[\\/]/);
+          return parts.length > 1 ? parts[0] : "__ROOT__";
+        })
+      ));
+      overlay.showSearchOverlay({
+        title,
+        placeholder: config.placeholder || `Search ${config.displayName.toLowerCase()}...`,
+        items,
+        allowCreate: false,
+        enableMultiToggle: multiSelect,
+        onChoose: (id) => {
+          const file = files.find((f) => f.id === id);
+          if (file) {
+            onSelect(file);
+          }
+        },
+        onChooseMany: onMultiSelect ? (ids) => {
+          const selectedFiles = ids.map((id) => files.find((f) => f.id === id)).filter(Boolean);
+          if (onMultiSelect && selectedFiles.length > 0) {
+            onMultiSelect(selectedFiles);
+          }
+        } : void 0,
+        folderChips: topFolders,
+        baseFolderName: config.folderName,
+        currentValue,
+        rightActions: []
+      });
+    }).catch((error) => {
+      console.error("Failed to load file picker:", error);
+      OverlayService.getInstance().showToast(`Failed to load ${config.displayName.toLowerCase()}`, "error");
+    });
+  }
+  /**
+   * Cache management
+   */
+  getCachedFiles(key) {
+    const cacheTime = this.cacheTimestamps.get(key);
+    if (!cacheTime) return null;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1e3;
+    if (cacheTime < fiveMinutesAgo) {
+      this.fileCache.delete(key);
+      this.cacheTimestamps.delete(key);
+      return null;
+    }
+    return this.fileCache.get(key) || null;
+  }
+  setCachedFiles(key, files) {
+    this.fileCache.set(key, files);
+    this.cacheTimestamps.set(key, Date.now());
+  }
+  /**
+   * Clear all caches
+   */
+  clearCache() {
+    this.fileCache.clear();
+    this.cacheTimestamps.clear();
+  }
+  /**
+   * Refresh cache for specific file type
+   */
+  async refreshFileType(fileType) {
+    const cacheKey = `files_${fileType}`;
+    this.fileCache.delete(cacheKey);
+    this.cacheTimestamps.delete(cacheKey);
+    await this.getFilesForType(fileType);
+  }
+};
+_FilePickerService.FILE_TYPES = {
+  models: {
+    folderName: "checkpoints",
+    displayName: "Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🏗️",
+    placeholder: "Search models..."
+  },
+  vae: {
+    folderName: "vae",
+    displayName: "VAEs",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🎨",
+    placeholder: "Search VAEs..."
+  },
+  loras: {
+    folderName: "loras",
+    displayName: "LoRAs",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🏷️",
+    placeholder: "Search LoRAs..."
+  },
+  text_encoders: {
+    folderName: "text_encoders",
+    displayName: "Text Encoders",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "📝",
+    placeholder: "Search text encoders..."
+  },
+  diffusion_models: {
+    folderName: "diffusion_models",
+    displayName: "Diffusion Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🧠",
+    placeholder: "Search diffusion models..."
+  },
+  gguf_unet_models: {
+    folderName: "unet",
+    displayName: "UNET GGUF Models",
+    fileExtensions: [".gguf"],
+    icon: "🧠",
+    placeholder: "Search GGUF UNET models..."
+  },
+  controlnet: {
+    folderName: "controlnet",
+    displayName: "ControlNets",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🎛️",
+    placeholder: "Search ControlNets..."
+  },
+  upscale_models: {
+    folderName: "upscale_models",
+    displayName: "Upscale Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🔍",
+    placeholder: "Search upscale models..."
+  }
+};
+let FilePickerService = _FilePickerService;
+const GGUF_CLIP_WIDGET_MAP = {
+  DualCLIPLoaderGGUF: ["clip_name1", "clip_name2"],
+  TripleCLIPLoaderGGUF: ["clip_name1", "clip_name2", "clip_name3"],
+  QuadrupleCLIPLoaderGGUF: ["clip_name1", "clip_name2", "clip_name3", "clip_name4"]
+};
+const _NodeEnhancerExtension = class _NodeEnhancerExtension {
+  static createOverlayWidget(node, targetWidget, config) {
+    const overlayWidget = {
+      name: `${config.widgetName}__ndOverlay`,
+      type: "ndPowerOverlay",
+      value: targetWidget.value ?? "",
+      _ndDisplayValue: targetWidget.value ?? "",
+      _ndWidgetLabel: targetWidget.label || targetWidget.name || config.widgetName,
+      _ndPlaceholder: _NodeEnhancerExtension.buildPlaceholder(config, targetWidget),
+      __ndOverlay: true,
+      __ndTargetWidgetName: config.widgetName,
+      serialize: false,
+      parent: node,
+      computeSize(width) {
+        const H = window.LiteGraph?.NODE_WIDGET_HEIGHT || 20;
+        return [width, H];
+      },
+      draw(ctx, nodeRef, widgetWidth, widgetY) {
+        const H = window.LiteGraph?.NODE_WIDGET_HEIGHT || 20;
+        const margin = 6;
+        const gutter = 10;
+        const inset = 8;
+        const caretPadding = 14;
+        const x = margin + gutter;
+        const y = widgetY;
+        const availableWidth = Math.max(60, widgetWidth - margin * 2 - gutter * 2);
+        const w = Math.max(120, Math.min(availableWidth, (nodeRef?.size?.[0] || widgetWidth) - 24));
+        const labelText = this._ndWidgetLabel || config.widgetName;
+        const rawValue = this._ndDisplayValue && String(this._ndDisplayValue) || this._ndPlaceholder;
+        const isPlaceholder = rawValue === this._ndPlaceholder;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#555";
+        ctx.fillStyle = "#1f1f1f";
+        if (typeof ctx.roundRect === "function") {
+          ctx.beginPath();
+          ctx.roundRect(x, y, w, H, 5);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.fillRect(x, y, w, H);
+          ctx.strokeRect(x, y, w, H);
+        }
+        ctx.font = "12px Arial";
+        ctx.textBaseline = "middle";
+        const labelFullWidth = ctx.measureText(labelText).width;
+        const valueFullWidth = ctx.measureText(rawValue).width;
+        const valueEnd = x + w - inset - caretPadding;
+        const labelSpacing = 8;
+        let showLabel = labelFullWidth > 0;
+        let labelWidth = Math.min(labelFullWidth, w * 0.35);
+        let valueStart = showLabel ? x + inset + labelWidth + labelSpacing : x + inset;
+        let valueMaxWidth = Math.max(12, valueEnd - valueStart);
+        if (valueFullWidth > valueMaxWidth && showLabel) {
+          showLabel = false;
+          labelWidth = 0;
+          valueStart = x + inset;
+          valueMaxWidth = Math.max(12, valueEnd - valueStart);
+        }
+        let displayLabel = "";
+        if (showLabel) {
+          const labelMaxWidth = Math.max(12, valueStart - (x + inset) - labelSpacing);
+          displayLabel = labelFullWidth <= labelMaxWidth ? labelText : _NodeEnhancerExtension.truncateText(ctx, labelText, labelMaxWidth, false);
+          if (!displayLabel.trim()) {
+            showLabel = false;
+            valueStart = x + inset;
+            valueMaxWidth = Math.max(12, valueEnd - valueStart);
+          }
+        }
+        const displayValue = valueFullWidth <= valueMaxWidth ? rawValue : _NodeEnhancerExtension.truncateText(ctx, rawValue, valueMaxWidth, false);
+        if (showLabel) {
+          ctx.textAlign = "left";
+          ctx.fillStyle = "#888888";
+          ctx.fillText(displayLabel, x + inset, y + H / 2);
+        }
+        ctx.textAlign = "right";
+        ctx.fillStyle = isPlaceholder ? "#7a7a7a" : "#ffffff";
+        ctx.fillText(displayValue, valueEnd, y + H / 2);
+        ctx.fillStyle = "#888";
+        ctx.textAlign = "center";
+        ctx.fillText("▾", x + w - inset - 4, y + H / 2 + 1);
+        ctx.restore();
+        this.last_y = widgetY;
+        this.last_height = H;
+      },
+      mouse(event, pos, nodeRef) {
+        const evtType = event?.type;
+        const isLeft = event?.button === 0 || event?.which === 1 || event?.button === void 0;
+        if (evtType === "pointerdown" && isLeft) {
+          _NodeEnhancerExtension.showEnhancedPicker(nodeRef ?? node, config);
+          return true;
+        }
+        if (evtType === "pointerup" && isLeft) {
+          return true;
+        }
+        return false;
+      },
+      serializeValue() {
+        if (typeof targetWidget.serializeValue === "function") {
+          try {
+            return targetWidget.serializeValue();
+          } catch {
+          }
+        }
+        return targetWidget.value;
+      }
+    };
+    overlayWidget.callback = () => {
+      _NodeEnhancerExtension.showEnhancedPicker(node, config);
+    };
+    overlayWidget.updateDisplay = (value, displayValue) => {
+      const normalizedValue = typeof value === "string" ? value : "";
+      const normalizedDisplay = typeof displayValue === "string" ? displayValue : normalizedValue;
+      overlayWidget.value = normalizedValue;
+      overlayWidget._ndDisplayValue = normalizedDisplay || "";
+    };
+    return overlayWidget;
+  }
+  static formatDisplayValue(value) {
+    if (!value) {
+      return "";
+    }
+    try {
+      return String(value);
+    } catch {
+      return "";
+    }
+  }
+  static buildPlaceholder(config, widget) {
+    const base = widget?.label || widget?.name || config.label || config.widgetName || "file";
+    return `Select ${base}`;
+  }
+  static enhanceWidget(node, widget, config) {
+    node.__ndEnhancedWidgets = node.__ndEnhancedWidgets || {};
+    const meta = node.__ndEnhancedWidgets[config.widgetName] || { original: {} };
+    const original = meta.original;
+    if (!("callback" in original)) original.callback = widget.callback;
+    if (!("mouse" in original)) original.mouse = widget.mouse;
+    if (!("draw" in original)) original.draw = widget.draw;
+    if (!("computeSize" in original)) original.computeSize = widget.computeSize;
+    if (!("hidden" in original)) original.hidden = widget.hidden;
+    if (!("options" in original)) original.options = widget.options ? { ...widget.options } : void 0;
+    if (!("serialize" in original)) original.serialize = widget.serialize;
+    if (!("skipSerialize" in original)) original.skipSerialize = widget.skipSerialize;
+    widget._ndPlaceholder = _NodeEnhancerExtension.buildPlaceholder(config, widget);
+    widget.hidden = true;
+    widget.computeSize = _NodeEnhancerExtension.HIDDEN_WIDGET_SIZE;
+    if (!meta.overlay) {
+      const overlay = _NodeEnhancerExtension.createOverlayWidget(node, widget, config);
+      meta.overlay = overlay;
+      if (!node.widgets) node.widgets = [];
+      const idx = node.widgets.indexOf(widget);
+      if (idx >= 0) node.widgets.splice(idx + 1, 0, overlay);
+      else node.widgets.push(overlay);
+    }
+    widget.callback = function() {
+      _NodeEnhancerExtension.showEnhancedPicker(node, config);
+      return true;
+    };
+    widget.mouse = function(event, pos, nodeRef) {
+      const evtType = event?.type;
+      const isLeft = evtType === "pointerdown" && (event?.button === 0 || event?.which === 1 || event?.button === void 0);
+      if (isLeft) {
+        _NodeEnhancerExtension.showEnhancedPicker(nodeRef ?? node, config);
+        return true;
+      }
+      if (typeof meta.original.mouse === "function") {
+        return meta.original.mouse.call(this, event, pos, nodeRef ?? node);
+      }
+      return false;
+    };
+    node.__ndEnhancedWidgets[config.widgetName] = meta;
+  }
+  static restoreWidget(node, widget, config) {
+    const meta = node.__ndEnhancedWidgets?.[config.widgetName];
+    if (!meta) return;
+    const original = meta.original || {};
+    if (widget) {
+      if ("callback" in original) {
+        widget.callback = original.callback;
+      } else {
+        delete widget.callback;
+      }
+      if ("mouse" in original) {
+        widget.mouse = original.mouse;
+      } else {
+        delete widget.mouse;
+      }
+      if ("draw" in original) {
+        widget.draw = original.draw;
+      } else {
+        delete widget.draw;
+      }
+      if ("computeSize" in original) {
+        if (original.computeSize) {
+          widget.computeSize = original.computeSize;
+        } else {
+          delete widget.computeSize;
+        }
+      }
+      if ("serialize" in original) {
+        widget.serialize = original.serialize;
+      } else {
+        delete widget.serialize;
+      }
+      if ("skipSerialize" in original) {
+        widget.skipSerialize = original.skipSerialize;
+      } else {
+        delete widget.skipSerialize;
+      }
+      if ("options" in original) {
+        if (original.options === void 0) {
+          delete widget.options;
+        } else {
+          widget.options = { ...original.options };
+        }
+      }
+      if ("hidden" in original) {
+        if (original.hidden === void 0) {
+          delete widget.hidden;
+        } else {
+          widget.hidden = original.hidden;
+        }
+      } else {
+        delete widget.hidden;
+      }
+      delete widget._ndPlaceholder;
+      delete widget.last_y;
+      delete widget.last_height;
+      delete widget._ndDisplayValue;
+    }
+    if (meta.overlay) {
+      const idx = node.widgets?.indexOf(meta.overlay) ?? -1;
+      if (idx >= 0) node.widgets.splice(idx, 1);
+      delete meta.overlay;
+    }
+    delete node.__ndEnhancedWidgets[config.widgetName];
+    if (node.__ndEnhancedWidgets && Object.keys(node.__ndEnhancedWidgets).length === 0) {
+      delete node.__ndEnhancedWidgets;
+    }
+  }
+  /**
+   * Initialize the node enhancer extension
+   */
+  static async initialize() {
+    console.log("Node Enhancer Extension: Initializing...");
+    this.loadUserPreferences();
+    await this.filePickerService;
+    console.log("Node Enhancer Extension: Initialized successfully");
+  }
+  /**
+   * Set up enhancement for a specific node type
+   */
+  static setup(nodeType, nodeData) {
+    const configs = this.ENHANCED_NODES.filter((c) => c.nodeType === nodeData.name);
+    if (!configs.length) return;
+    const originalCreate = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function() {
+      originalCreate?.apply(this, arguments);
+      if (!this.__ndPowerEnabled) this.__ndPowerEnabled = false;
+      if (this.__ndPowerEnabled) {
+        configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
+      }
+    };
+    const originalMenu = nodeType.prototype.getExtraMenuOptions;
+    nodeType.prototype.getExtraMenuOptions = function(canvas, optionsArr) {
+      let options = Array.isArray(optionsArr) ? optionsArr : [];
+      const maybe = originalMenu?.call(this, canvas, options);
+      if (Array.isArray(maybe)) options = maybe;
+      options.push(null);
+      options.push({
+        content: this.__ndPowerEnabled ? "➖ Disable ND Power UI" : "⚡ Enable ND Power UI",
+        callback: () => {
+          try {
+            if (this.__ndPowerEnabled) {
+              configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
+              this.__ndPowerEnabled = false;
+            } else {
+              configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
+              this.__ndPowerEnabled = true;
+            }
+            this.setDirtyCanvas?.(true, true);
+          } catch (error) {
+            console.warn("Node Enhancer: toggle failed", error);
+          }
+        }
+      });
+      return options;
+    };
+    const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function(ctx) {
+      if (originalOnDrawForeground) {
+        originalOnDrawForeground.call(this, ctx);
+      }
+      _NodeEnhancerExtension.drawEnhancedWidgets(this, ctx);
+    };
+    const originalSerialize = nodeType.prototype.serialize;
+    nodeType.prototype.serialize = function() {
+      const data = originalSerialize ? originalSerialize.apply(this, arguments) : {};
+      try {
+        data.ndPowerEnabled = !!this.__ndPowerEnabled;
+        if (this.__ndEnhancedWidgets && Array.isArray(this.widgets)) {
+          const hasOverlayWidgets = this.widgets.some((w) => w?.__ndOverlay);
+          if (hasOverlayWidgets) {
+            const serializedValues = [];
+            for (const widget of this.widgets) {
+              if (!widget || widget.__ndOverlay || widget.serialize === false) {
+                continue;
+              }
+              if (typeof widget.serializeValue === "function") {
+                try {
+                  serializedValues.push(widget.serializeValue());
+                  continue;
+                } catch {
+                }
+              }
+              serializedValues.push(widget.value ?? null);
+            }
+            data.widgets_values = serializedValues;
+          }
+        }
+      } catch {
+      }
+      return data;
+    };
+    const originalConfigure = nodeType.prototype.configure;
+    nodeType.prototype.configure = function(data) {
+      if (originalConfigure) {
+        originalConfigure.call(this, data);
+      }
+      try {
+        if (typeof this.__ndPowerEnabled === "undefined") this.__ndPowerEnabled = false;
+        if (data && data.ndPowerEnabled) {
+          if (!this.__ndPowerEnabled) {
+            this.__ndPowerEnabled = true;
+            configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
+          }
+        } else {
+          configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
+          this.__ndPowerEnabled = false;
+        }
+      } catch {
+      }
+    };
+    const originalOnMouseDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function(event, pos) {
+      const handled = configs.some((cfg) => _NodeEnhancerExtension.handleEnhancedMouseDown(this, event, pos, cfg));
+      if (handled) {
+        return true;
+      }
+      return originalOnMouseDown ? originalOnMouseDown.call(this, event, pos) : false;
+    };
+    console.log(`Node Enhancer: Successfully enhanced ${nodeData.name}`);
+  }
+  /**
+   * Set up enhanced node with custom widgets
+   */
+  static setupEnhancedNode(node, config) {
+    if (node.__ndEnhancedWidgets?.[config.widgetName]) {
+      return;
+    }
+    const widget = node.widgets?.find((w) => w.name === config.widgetName);
+    if (!widget) {
+      console.warn(`Node Enhancer: Could not find widget "${config.widgetName}" in ${config.nodeType}`);
+      return;
+    }
+    node.__ndPowerEnabled = true;
+    node.__ndEnhancedWidgets = node.__ndEnhancedWidgets || {};
+    node.__ndEnhancedWidgets[config.widgetName] = node.__ndEnhancedWidgets[config.widgetName] || { original: {} };
+    this.enhanceWidget(node, widget, config);
+  }
+  /** Enable enhancement for a specific node instance */
+  static enableForNode(node, config) {
+    this.setupEnhancedNode(node, config);
+  }
+  /** Disable enhancement for a specific node instance */
+  static disableForNode(node, config) {
+    if (!node.__ndEnhancedWidgets || !node.__ndEnhancedWidgets[config.widgetName]) {
+      return;
+    }
+    const widget = node.widgets?.find((w) => w.name === config.widgetName);
+    _NodeEnhancerExtension.restoreWidget(node, widget, config);
+    if (!node.__ndEnhancedWidgets) {
+      node.__ndPowerEnabled = false;
+    }
+  }
+  static showEnhancedPicker(node, config) {
+    const widget = node.widgets?.find((w) => w.name === config.widgetName);
+    if (!widget) return;
+    const currentValue = widget.value;
+    this.filePickerService.showFilePicker(
+      config.fileType,
+      (file) => {
+        try {
+          widget.value = file.id;
+        } catch {
+        }
+        const meta = node.__ndEnhancedWidgets?.[config.widgetName];
+        if (meta?.overlay) {
+          meta.overlay.updateDisplay(widget.value, file?.path || file?.id || file?.filename || widget.value);
+        }
+        node.setDirtyCanvas?.(true, true);
+      },
+      {
+        title: `Select ${config.fileType}`,
+        multiSelect: false,
+        currentValue
+      }
+    );
+  }
+  /**
+   * Handle mouse events for enhanced widgets
+   */
+  static handleEnhancedMouseDown(node, event, pos, config) {
+    if (!node.__ndPowerEnabled || !node.__ndEnhancedWidgets || !node.__ndEnhancedWidgets[config.widgetName]) return false;
+    const widget = node.widgets?.find((w) => w.name === config.widgetName);
+    if (!widget) return false;
+    try {
+      const isLeft = event?.button === 0 || event?.which === 1 || !("button" in (event || {}));
+      if (!isLeft) return false;
+      const y = widget?.last_y ?? null;
+      const H = window.LiteGraph?.NODE_WIDGET_HEIGHT || 20;
+      if (y == null) return false;
+      const withinX = pos[0] >= 0 && pos[0] <= (node.size?.[0] || 200);
+      const withinY = pos[1] >= y && pos[1] <= y + H;
+      if (withinX && withinY) {
+        this.showEnhancedPicker(node, config);
+        return true;
+      }
+    } catch {
+    }
+    return false;
+  }
+  /**
+   * Draw enhanced widgets (visual indicators)
+   */
+  static drawEnhancedWidgets(node, ctx) {
+    if (!node.__ndPowerEnabled) return;
+    const indicatorText = "⚡ Enhanced";
+    ctx.save();
+    ctx.font = "12px Arial";
+    ctx.fillStyle = "#4CAF50";
+    ctx.textAlign = "left";
+    const titleHeight = node.constructor?.title_height ?? node.title_height ?? 24;
+    const padding = 4;
+    const y = Math.max(titleHeight, padding + 12);
+    ctx.fillText(indicatorText, padding, y);
+    ctx.restore();
+  }
+  // Preference helpers retained for future global defaults (no-op currently)
+  static loadUserPreferences() {
+  }
+  static saveUserPreferences() {
+  }
+  static getAvailableEnhancements() {
+    return this.ENHANCED_NODES;
+  }
+  static enableEnhancement(nodeTypeName) {
+    const config = this.ENHANCED_NODES.find((cfg) => cfg.nodeType === nodeTypeName);
+    if (!config) return;
+    const graph = window.app?.graph;
+    if (!graph) return;
+    (graph._nodes || []).forEach((node) => {
+      if (node.type === nodeTypeName) {
+        try {
+          this.enableForNode(node, config);
+          node.setDirtyCanvas?.(true, true);
+        } catch (error) {
+          console.warn("Node Enhancer: failed to enable node", node, error);
+        }
+      }
+    });
+  }
+  static loadSet(key, sessionFirst = false) {
+    try {
+      if (sessionFirst) {
+        const fromSession = sessionStorage.getItem(key);
+        if (fromSession) return new Set(JSON.parse(fromSession));
+      }
+      const fromLocal = localStorage.getItem(key);
+      if (fromLocal) return new Set(JSON.parse(fromLocal));
+      if (!sessionFirst) {
+        const fromSession = sessionStorage.getItem(key);
+        if (fromSession) return new Set(JSON.parse(fromSession));
+      }
+    } catch {
+    }
+    return /* @__PURE__ */ new Set();
+  }
+  static persistSet(key, value) {
+    try {
+      const data = JSON.stringify(Array.from(value));
+      sessionStorage.setItem(key, data);
+      localStorage.setItem(key, data);
+    } catch {
+    }
+  }
+  static truncateText(ctx, text, maxWidth, keepEnd = false) {
+    if (!text) return "";
+    if (ctx.measureText(text).width <= maxWidth) {
+      return text;
+    }
+    const ellipsis = "…";
+    if (keepEnd) {
+      let length2 = text.length;
+      while (length2 > 0) {
+        const candidate = ellipsis + text.slice(Math.max(0, text.length - length2));
+        if (ctx.measureText(candidate).width <= maxWidth) {
+          return candidate;
+        }
+        length2--;
+      }
+      return text.slice(-1);
+    }
+    let length = text.length;
+    while (length > 0) {
+      const candidate = text.slice(0, length) + ellipsis;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        return candidate;
+      }
+      length--;
+    }
+    return ellipsis;
+  }
+};
+_NodeEnhancerExtension.ENHANCED_NODES = [
+  {
+    nodeType: "CheckpointLoader",
+    fileType: "models",
+    widgetName: "ckpt_name",
+    label: "Enhanced Model Picker"
+  },
+  {
+    nodeType: "CheckpointLoaderSimple",
+    fileType: "models",
+    widgetName: "ckpt_name",
+    label: "Enhanced Model Picker"
+  },
+  {
+    nodeType: "VAELoader",
+    fileType: "vae",
+    widgetName: "vae_name",
+    label: "Enhanced VAE Picker"
+  },
+  {
+    nodeType: "LoraLoader",
+    fileType: "loras",
+    widgetName: "lora_name",
+    label: "Enhanced LoRA Picker"
+  },
+  {
+    nodeType: "UNETLoader",
+    fileType: "diffusion_models",
+    widgetName: "unet_name",
+    label: "Enhanced UNET Picker"
+  },
+  {
+    nodeType: "UnetLoaderGGUF",
+    fileType: "gguf_unet_models",
+    widgetName: "unet_name",
+    label: "Enhanced UNET GGUF Picker"
+  },
+  {
+    nodeType: "UnetLoaderGGUFAdvanced",
+    fileType: "gguf_unet_models",
+    widgetName: "unet_name",
+    label: "Enhanced UNET GGUF Picker"
+  },
+  {
+    nodeType: "CLIPLoader",
+    fileType: "text_encoders",
+    widgetName: "clip_name",
+    label: "Enhanced CLIP Picker"
+  },
+  {
+    nodeType: "CLIPLoaderGGUF",
+    fileType: "text_encoders",
+    widgetName: "clip_name",
+    label: "Enhanced CLIP GGUF Picker"
+  },
+  ...Object.entries(GGUF_CLIP_WIDGET_MAP).flatMap(
+    ([nodeType, widgetNames]) => widgetNames.map((widgetName, index) => ({
+      nodeType,
+      fileType: "text_encoders",
+      widgetName,
+      label: `Enhanced CLIP GGUF Picker (${index + 1})`
+    }))
+  ),
+  {
+    nodeType: "ControlNetLoader",
+    fileType: "controlnet",
+    widgetName: "control_net_name",
+    label: "Enhanced ControlNet Picker"
+  },
+  {
+    nodeType: "UpscaleModelLoader",
+    fileType: "upscale_models",
+    widgetName: "model_name",
+    label: "Enhanced Upscale Picker"
+  }
+];
+_NodeEnhancerExtension.filePickerService = FilePickerService.getInstance();
+_NodeEnhancerExtension.HIDDEN_WIDGET_SIZE = (_width) => [0, -4];
+let NodeEnhancerExtension = _NodeEnhancerExtension;
+const EXTENSION_NAME$1 = "NodeEnhancer";
+const EXTENSION_VERSION = "1.0.0";
+const nodeEnhancerExtension = {
+  name: EXTENSION_NAME$1,
+  version: EXTENSION_VERSION,
+  // Extension settings
+  settings: [
+    {
+      id: "nodeEnhancer.enabled",
+      name: "Enable Node Enhancement",
+      type: "boolean",
+      defaultValue: true
+    },
+    {
+      id: "nodeEnhancer.autoEnhanceAll",
+      name: "Auto-enhance All Nodes",
+      type: "boolean",
+      defaultValue: false
+    }
+  ],
+  // Extension commands (minimal; per-node toggle lives in right-click menu)
+  commands: [
+    {
+      id: "nodeEnhancer.clearCache",
+      label: "ND Power UI: Clear File Cache",
+      function: () => {
+        try {
+          NodeEnhancerExtension["filePickerService"]?.clearCache?.();
+          console.log("ND Power UI: File cache cleared");
+        } catch {
+        }
+      }
+    }
+  ],
+  /**
+   * Called when the extension is loaded
+   */
+  async init() {
+    console.log(`${EXTENSION_NAME$1} v${EXTENSION_VERSION}: Initializing...`);
+    try {
+      await NodeEnhancerExtension.initialize();
+      console.log(`${EXTENSION_NAME$1}: Initialization successful`);
+    } catch (error) {
+      console.error(`${EXTENSION_NAME$1}: Initialization failed:`, error);
+    }
+  },
+  /**
+   * Called before a node type is registered
+   * This is where we inject our enhancements
+   */
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    try {
+      NodeEnhancerExtension.setup(nodeType, nodeData);
+    } catch (error) {
+      console.error("Node Enhancer: Error in beforeRegisterNodeDef:", error);
+    }
+  },
+  /**
+   * Called when a node is created
+   */
+  nodeCreated(node) {
+    const autoEnhanceAll = app$1.ui.settings.getSettingValue("nodeEnhancer.autoEnhanceAll", false);
+    if (autoEnhanceAll && node.type) {
+      const availableEnhancements = NodeEnhancerExtension.getAvailableEnhancements();
+      const config = availableEnhancements.find((e) => e.nodeType === node.type);
+      if (config) {
+        NodeEnhancerExtension.enableEnhancement(config.nodeType);
+        console.log(`Node Enhancer: Auto-enhanced ${node.type}`);
+      }
+    }
+  },
+  /**
+   * Called before the graph is configured
+   */
+  beforeConfigureGraph(_graphData) {
+    console.log("Node Enhancer: Configuring graph");
+  },
+  /**
+   * Called after the graph is configured
+   */
+  afterConfigureGraph(_graphData) {
+    console.log("Node Enhancer: Graph configured");
+  }
+};
+console.log(`${EXTENSION_NAME$1}: Registering extension with ComfyUI`);
+app$1.registerExtension(nodeEnhancerExtension);
+console.log(`${EXTENSION_NAME$1}: Extension registered successfully`);
 const EXTENSION_NAME = "SuperLoraLoader";
 const NODE_TYPE = "SuperLoraLoader";
 const superLoraExtension = {
@@ -3367,4 +4286,8 @@ const superLoraExtension = {
 console.log("Super LoRA Loader: Registering extension with ComfyUI");
 app$1.registerExtension(superLoraExtension);
 console.log("Super LoRA Loader: Extension registered successfully");
+try {
+  window.SuperLoraNode = SuperLoraNode;
+} catch {
+}
 //# sourceMappingURL=extension.js.map
