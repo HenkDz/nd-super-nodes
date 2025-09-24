@@ -29,11 +29,13 @@ __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 # Register HTTP routes with ComfyUI's PromptServer when available
 try:
     from .web_api import register_routes as _register_super_lora_routes
+    from .file_api import register_file_api_routes as _register_file_api_routes
     try:
         from server import PromptServer  # ComfyUI's server
         _app = getattr(PromptServer.instance, "app", None) or PromptServer.instance
         if _app:
             _register_super_lora_routes(_app)
+            _register_file_api_routes(_app)
             print("Super LoRA Loader: API routes registered")
     except Exception as _e:
         print(f"Super LoRA Loader: Failed to register API routes: {_e}")

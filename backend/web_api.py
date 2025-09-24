@@ -4,6 +4,11 @@ Web API endpoints for Super LoRA Loader
 
 import json
 from aiohttp import web
+import os
+try:
+    import folder_paths
+except Exception:
+    folder_paths = None
 from .lora_utils import get_available_loras, extract_trigger_words
 from .template_manager import get_template_manager
 from .civitai_service import get_civitai_service
@@ -16,6 +21,61 @@ async def get_loras(request):
         return web.json_response({"loras": loras})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_files(request):
+    """Generic file lister using ComfyUI folder_paths (e.g., folder_name=loras|vae|checkpoints)"""
+    try:
+        folder_name = request.rel_url.query.get("folder_name")
+        ext_param = request.rel_url.query.get("extensions", "")
+        extensions = [e.strip().lower() for e in ext_param.split(",") if e.strip()]
+
+        if not folder_name:
+            return web.json_response({"error": "folder_name is required", "files": []}, status=400)
+
+        if folder_paths is None:
+            return web.json_response({"error": "folder_paths unavailable", "files": []}, status=500)
+
+        # Map legacy names and resolve directories
+        mapped = folder_paths.map_legacy(folder_name)
+        dirs, supported = folder_paths.folder_names_and_paths.get(mapped, ([], set()))
+        if not dirs:
+            # try direct
+            dirs, supported = folder_paths.folder_names_and_paths.get(folder_name, ([], set()))
+
+        # Filter extensions
+        if extensions:
+            supported = set([e.lower() for e in extensions])
+
+        out_files = []
+        for d in dirs:
+            if not os.path.isdir(d):
+                continue
+            try:
+                # Recurse into subfolders
+                for root, _, files in os.walk(d):
+                    for name in files:
+                        fp = os.path.join(root, name)
+                        if not os.path.isfile(fp):
+                            continue
+                        _, ext = os.path.splitext(name)
+                        if supported and ext.lower() not in supported and supported != {""}:
+                            continue
+                        st = os.stat(fp)
+                        out_files.append({
+                            "name": name,
+                            "path": os.path.relpath(fp, d).replace("\\", "/"),
+                            "extension": ext.lower(),
+                            "size": st.st_size,
+                            "modified": st.st_mtime
+                        })
+            except Exception:
+                continue
+
+        out_files.sort(key=lambda x: x["name"].lower())
+        return web.json_response({"files": out_files, "total": len(out_files)})
+    except Exception as e:
+        return web.json_response({"error": str(e), "files": []}, status=500)
 
 
 async def get_templates(request):
@@ -165,6 +225,7 @@ async def delete_template_by_name(request):
 def register_routes(app):
     """Register all Super LoRA Loader routes"""
     app.router.add_get("/super_lora/loras", get_loras)
+    app.router.add_get("/super_lora/files", get_files)
     app.router.add_get("/super_lora/templates", get_templates)
     app.router.add_post("/super_lora/templates", save_template)
     app.router.add_get("/super_lora/templates/{name}", load_template)
