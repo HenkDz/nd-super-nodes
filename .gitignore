@@ -9,3 +9,4 @@ backend/__pycache__/
 __pycache__/
 docs/cooredinaces-fix.md
 docs/triggers-outptut-fix.md
+frontend/type_errors.log
