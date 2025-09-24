@@ -1,6 +1,6 @@
 /**
  * Super LoRA Loader - ComfyUI Extension
- * 
+ *
  * A modern, standalone implementation of a powerful LoRA loader with advanced features.
  */
 
@@ -9,6 +9,7 @@ import { app } from '/scripts/app.js';
 import { ComfyExtension } from './types';
 import { SuperLoraNode } from './nodes/SuperLoraNode';
 import './styles/super-lora.scss';
+import './extensions/NodeEnhancer';
 
 // Extension configuration
 const EXTENSION_NAME = 'SuperLoraLoader';
@@ -169,3 +170,8 @@ export * from './types';
 export * from './services/LoraService';
 export * from './services/CivitAiService';
 export * from './services/TemplateService';
+
+// Bridge SuperLoraNode helpers for other modules (e.g., ND Power UI)
+try {
+  (window as any).SuperLoraNode = SuperLoraNode;
+} catch {}

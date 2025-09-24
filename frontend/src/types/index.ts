@@ -110,6 +110,7 @@ export interface SuperLoraNode {
 
 export interface ComfyExtension {
   name: string;
+  version?: string;
   settings?: Array<{
     id: string;
     name: string;
@@ -121,9 +122,11 @@ export interface ComfyExtension {
     label: string;
     function: () => void;
   }>;
+  init?(): void | Promise<void>;
   beforeRegisterNodeDef?(nodeType: any, nodeData: any): void;
   nodeCreated?(node: SuperLoraNode): void;
   beforeConfigureGraph?(graphData: any): void;
+  afterConfigureGraph?(graphData: any): void;
   // Custom helper we attach at runtime in our extension implementation
   setupNodeEventHandlers?(node: any): void;
 }

@@ -8,6 +8,7 @@ import { LoraService } from '@/services/LoraService';
 import { TemplateService } from '@/services/TemplateService';
 import { CivitAiService } from '@/services/CivitAiService';
 import { TagSetService } from '@/services/TagSetService';
+import { OverlayService } from '@/services/OverlayService';
 // import { SuperLoraBaseWidget } from './widgets/SuperLoraBaseWidget';
 import { SuperLoraHeaderWidget } from './widgets/SuperLoraHeaderWidget';
 import { SuperLoraTagWidget } from './widgets/SuperLoraTagWidget';
@@ -162,29 +163,25 @@ export class SuperLoraNode {
 
     // Add getExtraMenuOptions for additional context menu items
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
-    nodeType.prototype.getExtraMenuOptions = function(_canvas: any) {
-     
-      
+    nodeType.prototype.getExtraMenuOptions = function(_canvas: any, optionsArr?: any[]) {
       try {
-        const baseOptions = originalGetExtraMenuOptions ? originalGetExtraMenuOptions.call(this, _canvas) : [];
-        const options = Array.isArray(baseOptions) ? baseOptions : [];
+        // Respect both LiteGraph conventions: options via parameter and/or return value
+        let options = Array.isArray(optionsArr) ? optionsArr : [];
+        if (originalGetExtraMenuOptions) {
+          const maybe = originalGetExtraMenuOptions.call(this, _canvas, options);
+          if (Array.isArray(maybe)) options = maybe;
+        }
         options.push(null); // Separator
-        options.push({
-          content: "🏷️ Add LoRA",
-          callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined)
-        });
-        options.push({
-          content: "⚙️ Settings",
-          callback: (_event: any) => SuperLoraNode.showSettingsDialog(this)
-        });
+        options.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
+        options.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
         return options;
       } catch {
         // Always return a sane default to avoid other extensions crashing when they append
-        return [
-          null,
-          { content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) },
-          { content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) }
-        ];
+        const safe: any[] = optionsArr && Array.isArray(optionsArr) ? optionsArr : [];
+        safe.push(null);
+        safe.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
+        safe.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
+        return safe;
       }
     };
   }
@@ -411,7 +408,7 @@ export class SuperLoraNode {
       }));
 
       // Show overlay picker (no prompt)
-      this.showSearchOverlay({
+      OverlayService.getInstance().showSearchOverlay({
         title: 'Add LoRA',
         placeholder: 'Search LoRAs...',
         items,
@@ -458,7 +455,9 @@ export class SuperLoraNode {
           availableLoras
             .map((p: string) => p.split(/[\\/]/)[0])
             .filter(Boolean)
-        )).sort()
+        )).sort(),
+        // Fix the root chip label for LoRAs
+        baseFolderName: 'loras'
       });
     } catch (error) {
       console.error('Failed to show LoRA selector:', error);
@@ -479,7 +478,7 @@ export class SuperLoraNode {
     ]));
     const items = allTags.map(tag => ({ id: tag, label: tag }));
 
-    this.showSearchOverlay({
+    OverlayService.getInstance().showSearchOverlay({
       title: 'Select Tag',
       placeholder: 'Search or create tag...',
       items,
@@ -923,13 +922,15 @@ export class SuperLoraNode {
    */
   static serializeCustomWidgets(node: any): any {
     if (!node.customWidgets) return null;
-    
+
+    const cloneProperties = JSON.parse(JSON.stringify(node.properties || {}));
+
     return {
-      properties: node.properties,
+      properties: cloneProperties,
       widgets: node.customWidgets.map((widget: any) => ({
         name: widget.name,
         type: widget.constructor.name,
-        value: widget.value
+        value: JSON.parse(JSON.stringify(widget.value))
       }))
     };
   }
@@ -939,43 +940,41 @@ export class SuperLoraNode {
    */
   static deserializeCustomWidgets(node: any, data: any): void {
     if (!data) return;
-    
-    // Restore properties
-    if (data.properties) {
-      Object.assign(node.properties, data.properties);
-    }
-    
-    // Restore widgets
-    if (data.widgets) {
-      node.customWidgets = [];
-      
-      for (const widgetData of data.widgets) {
-        let widget: any;
-        
-        switch (widgetData.type) {
-          case 'SuperLoraHeaderWidget':
-            widget = new SuperLoraHeaderWidget();
-            break;
-          case 'SuperLoraTagWidget':
-            widget = new SuperLoraTagWidget(widgetData.value.tag);
-            break;
-          case 'SuperLoraWidget':
-            widget = new SuperLoraWidget(widgetData.name);
-            break;
-          default:
-            continue;
-        }
-        
-        widget.value = { ...widget.value, ...widgetData.value };
-        node.customWidgets.push(widget);
+
+    try {
+      node.properties = node.properties || {};
+      if (data.properties) {
+        Object.assign(node.properties, JSON.parse(JSON.stringify(data.properties)));
       }
+
+      const restoredWidgets: any[] = [];
+      if (Array.isArray(data.widgets)) {
+        for (const widgetData of data.widgets) {
+          let widget: any;
+          switch (widgetData.type) {
+            case 'SuperLoraHeaderWidget':
+              widget = new SuperLoraHeaderWidget();
+              break;
+            case 'SuperLoraTagWidget':
+              widget = new SuperLoraTagWidget(widgetData.value?.tag);
+              break;
+            case 'SuperLoraWidget':
+              widget = new SuperLoraWidget(widgetData.name);
+              break;
+            default:
+              continue;
+          }
+          widget.value = { ...widget.value, ...JSON.parse(JSON.stringify(widgetData.value || {})) };
+          restoredWidgets.push(widget);
+        }
+      }
+
+      node.customWidgets = restoredWidgets.length ? restoredWidgets : [new SuperLoraHeaderWidget()];
+    } catch (error) {
+      console.warn('SuperLoRA: Failed to restore custom widgets, resetting defaults', error);
+      node.customWidgets = [new SuperLoraHeaderWidget()];
     }
-    
-    // Ensure minimum widgets
-    if (!node.customWidgets.find((w: any) => w instanceof SuperLoraHeaderWidget)) {
-      node.customWidgets.unshift(new SuperLoraHeaderWidget());
-    }
-    
+
     node.setDirtyCanvas(true, true);
   }
 
@@ -1008,54 +1007,7 @@ export class SuperLoraNode {
    * Show toast notification with enhanced styling
    */
   public static showToast(message: string, type: 'success' | 'warning' | 'error' | 'info' = 'info'): void {
-    console.log(`Super LoRA Loader [${type}]: ${message}`);
-
-    // Define colors for different types
-    const colors = {
-      success: '#28a745',
-      warning: '#ffc107',
-      error: '#dc3545',
-      info: '#17a2b8'
-    };
-
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: ${colors[type]};
-      color: white;
-      padding: 14px 20px;
-      border-radius: 6px;
-      z-index: 10000;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      font-size: 14px;
-      font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      opacity: 0;
-      transition: all 0.3s ease;
-      max-width: 400px;
-      word-wrap: break-word;
-    `;
-
-    // Add a subtle border
-    toast.style.borderLeft = '4px solid rgba(255,255,255,0.3)';
-    toast.textContent = message;
-
-    document.body.appendChild(toast);
-
-    // Animate in
-    setTimeout(() => {
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    }, 10);
-
-    // Auto remove
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(-10px)';
-      setTimeout(() => toast.remove(), 300);
-    }, type === 'error' ? 5000 : 3000); // Errors stay longer
+    OverlayService.getInstance().showToast(message, type);
   }
 
   // Inline editors for better UX
@@ -1209,452 +1161,7 @@ export class SuperLoraNode {
 
   // Overlay utilities
   public static showSearchOverlay(opts: { title: string; placeholder: string; items: { id: string; label: string; disabled?: boolean }[]; onChoose: (id: string) => void; allowCreate?: boolean, onRightAction?: (id: string) => void, rightActionIcon?: string, rightActionTitle?: string, rightActions?: Array<{ icon: string; title?: string; onClick: (id: string) => void }>, folderChips?: string[], enableMultiToggle?: boolean, onChooseMany?: (ids: string[]) => void }): void {
-    // Ensure only one overlay at a time
-    try {
-      document.querySelectorAll('[data-super-lora-overlay="1"]').forEach((el: any) => el.remove());
-    } catch {}
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.55);
-      z-index: 2147483600;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      backdrop-filter: blur(2px);
-    `;
-    overlay.setAttribute('data-super-lora-overlay', '1');
-
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-      width: 560px;
-      max-height: 70vh;
-      background: #222;
-      border: 1px solid #444;
-      border-radius: 8px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.4);
-      color: #fff;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    `;
-
-    const header = document.createElement('div');
-    header.textContent = opts.title;
-    header.style.cssText = `
-      padding: 12px 14px;
-      font-weight: 600;
-      border-bottom: 1px solid #444;
-      background: #2a2a2a;
-    `;
-
-    const search = document.createElement('input');
-    search.type = 'text';
-    search.placeholder = opts.placeholder;
-    search.style.cssText = `
-      margin: 10px 12px;
-      padding: 10px 12px;
-      border-radius: 6px;
-      border: 1px solid #555;
-      background: #1a1a1a;
-      color: #fff;
-      outline: none;
-    `;
-
-    // Optional multi-select mode (default off)
-    const multiEnabled = !!opts.enableMultiToggle;
-    let multiMode = false;
-    const selectedIds = new Set<string>();
-    // Special key for root (no top-level folder)
-    const ROOT_KEY = '__ROOT__';
-
-    // Controls row (e.g., multi-select toggle)
-    const controls = document.createElement('div');
-    controls.style.cssText = `
-      display: ${multiEnabled ? 'flex' : 'none'};
-      align-items: center;
-      justify-content: flex-end;
-      gap: 10px;
-      padding: 0 12px 6px 12px;
-      color: #ddd;
-      font-size: 12px;
-    `;
-    const multiLabel = document.createElement('label');
-    multiLabel.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
-    const multiToggle = document.createElement('input');
-    multiToggle.type = 'checkbox';
-    multiToggle.addEventListener('change', () => {
-      multiMode = !!multiToggle.checked;
-      // Do not clear selection when switching modes
-      render(search.value);
-      renderFooter();
-    });
-    const multiText = document.createElement('span');
-    multiText.textContent = 'Multi-select';
-    multiLabel.appendChild(multiToggle);
-    multiLabel.appendChild(multiText);
-    controls.appendChild(multiLabel);
-
-    // Folder chips row
-    const chipWrap = document.createElement('div');
-    chipWrap.style.cssText = `
-      display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
-    `;
-
-    // Subfolder chips row (appears when at least one folder chip is active)
-    const subChipWrap = document.createElement('div');
-    subChipWrap.style.cssText = `
-      display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;
-    `;
-
-    // Gate folder features so other overlays (e.g., tags) are unaffected
-    let folderFeatureEnabled = false;
-
-    // Persist selected folders per-session
-    const FILTER_KEY = 'superlora_folder_filters';
-    const saved = (() => { try { return JSON.parse(sessionStorage.getItem(FILTER_KEY) || '[]'); } catch { return []; } })();
-    const activeFolders = new Set<string>(Array.isArray(saved) ? saved : []);
-    const SUBFILTER_KEY = 'superlora_subfolder_filters';
-    const savedSubs = (() => { try { return JSON.parse(sessionStorage.getItem(SUBFILTER_KEY) || '[]'); } catch { return []; } })();
-    const activeSubfolders = new Set<string>(Array.isArray(savedSubs) ? savedSubs : []);
-
-    const renderChips = (folderCounts: Record<string, number>) => {
-      chipWrap.innerHTML = '';
-      const allFolderNames = Object.keys(folderCounts);
-      // Sort to ensure 'loras - root' chip is always first, then alphabetical
-      allFolderNames.sort((a, b) => {
-        if (a === ROOT_KEY) return -1;
-        if (b === ROOT_KEY) return 1;
-        return a.localeCompare(b);
-      });
-      allFolderNames.forEach((name) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        const isActive = activeFolders.has(name);
-        const label = (name === ROOT_KEY) ? 'loras - root' : name;
-        const count = folderCounts[name] ?? 0;
-        chip.textContent = `${label} (${count})`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? '#333' : '#252525'};
-          color: #fff; border: ${isActive ? '2px solid #66aaff' : '1px solid #3a3a3a'}; cursor: pointer;
-        `;
-        chip.addEventListener('click', () => {
-          if (activeFolders.has(name)) activeFolders.delete(name); else activeFolders.add(name);
-          try { sessionStorage.setItem(FILTER_KEY, JSON.stringify(Array.from(activeFolders))); } catch {}
-          // Prune subfolder selections that no longer belong to active top-level folders
-          try {
-            const toRemove: string[] = [];
-            activeSubfolders.forEach((key) => { const t = key.split('/')[0]; if (!activeFolders.has(t)) toRemove.push(key); });
-            toRemove.forEach((k) => activeSubfolders.delete(k));
-            sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders)));
-          } catch {}
-          render(search.value);
-          renderSubChips();
-        });
-        chipWrap.appendChild(chip);
-      });
-    };
-
-    // Build subfolder chips for selected top-level folders
-    const renderSubChips = () => {
-      subChipWrap.innerHTML = '';
-      // Only show sub-chips when at least one top-level folder is active
-      const show = activeFolders.size > 0;
-      subChipWrap.style.display = show ? 'flex' : 'none';
-      if (!show) return;
-
-      // Compute subfolder counts limited to active top-level folders
-      const subCountsByKey: Record<string, number> = {};
-      const subToTops: Record<string, Set<string>> = {};
-      (opts.items || []).forEach((i) => {
-        const parts = i.id.split(/[\\/]/);
-        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-        const sub = parts.length > 2 ? parts[1] : ROOT_KEY; // root files directly under top
-        // Do not render subchips for global root (files with no top-level folder)
-        if (top === ROOT_KEY) return;
-        if (!activeFolders.has(top)) return;
-        // For root-level files under a top folder, we include a special ROOT sub-chip
-        if (sub === ROOT_KEY) {
-          const key = `${top}/${ROOT_KEY}`;
-          subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
-          if (!subToTops['(root)']) subToTops['(root)'] = new Set<string>();
-          subToTops['(root)'].add(top);
-          return;
-        }
-        if (!activeFolders.has(top)) return;
-        const key = `${top}/${sub}`;
-        subCountsByKey[key] = (subCountsByKey[key] || 0) + 1;
-        if (!subToTops[sub]) subToTops[sub] = new Set<string>();
-        subToTops[sub].add(top);
-      });
-
-      const keys = Object.keys(subCountsByKey).sort();
-      keys.forEach((key) => {
-        const [top, sub] = key.split('/');
-        const isRootSub = (sub === ROOT_KEY);
-        let label: string;
-        if (isRootSub) {
-          // Always show "Top - root" to avoid confusing multiple roots
-          label = `${top} - root`;
-        } else {
-          const duplicate = (subToTops[sub] && subToTops[sub].size > 1);
-          label = duplicate ? `${sub} (${top})` : sub;
-        }
-        const count = subCountsByKey[key] ?? 0;
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        const isActive = activeSubfolders.has(key);
-        chip.textContent = `${label} (${count})`;
-        chip.title = `${top}/${sub}`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? '#333' : '#252525'};
-          color: #fff; border: ${isActive ? '2px solid #66aaff' : '1px solid #3a3a3a'}; cursor: pointer;
-        `;
-        chip.addEventListener('click', () => {
-          if (activeSubfolders.has(key)) activeSubfolders.delete(key); else activeSubfolders.add(key);
-          try { sessionStorage.setItem(SUBFILTER_KEY, JSON.stringify(Array.from(activeSubfolders))); } catch {}
-          render(search.value);
-          renderSubChips();
-        });
-        subChipWrap.appendChild(chip);
-      });
-    };
-
-    const listWrap = document.createElement('div');
-    listWrap.style.cssText = `
-      overflow: auto;
-      padding: 6px 4px 10px 4px;
-    `;
-
-    const list = document.createElement('div');
-    list.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 0 8px 8px 8px;
-    `;
-
-    const empty = document.createElement('div');
-    empty.textContent = 'No results';
-    empty.style.cssText = 'padding: 12px; color: #aaa; display: none;';
-
-    const close = () => overlay.remove();
-
-    const render = (term: string) => {
-      list.innerHTML = '';
-      const q = (term || '').trim().toLowerCase();
-      const termFiltered = q ? opts.items.filter(i => i.label.toLowerCase().includes(q)) : opts.items;
-
-      // Folder feature: only compute/update chips and apply filters when enabled
-      if (folderFeatureEnabled) {
-        const folderCounts: Record<string, number> = {};
-        termFiltered.forEach(i => {
-          const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-          folderCounts[top] = (folderCounts[top] || 0) + 1;
-        });
-        renderChips(folderCounts);
-      }
-
-      // Now apply active folder filters (multi-select) only when folder feature is enabled
-      let filtered = termFiltered;
-      if (folderFeatureEnabled && activeFolders.size > 0) {
-        filtered = termFiltered.filter(i => {
-          const parts = i.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-          return activeFolders.has(top);
-        });
-
-        // Additionally apply subfolder filters when any are selected
-        if (activeSubfolders.size > 0) {
-          filtered = filtered.filter(i => {
-            const parts = i.id.split(/[\\/]/);
-            const top = parts.length > 1 ? parts[0] : '';
-            if (!top) return false;
-            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
-            const key = `${top}/${sub}`;
-            return activeSubfolders.has(key);
-          });
-        }
-      }
-
-      // Note: further folder-based filtering is only applied when folderFeatureEnabled is true (handled above)
-
-      // Optional create-new row when allowed and search doesn't exactly match
-      if (opts.allowCreate && q) {
-        const exact = opts.items.some(i => i.label.toLowerCase() === q);
-        if (!exact) {
-          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
-        }
-      }
-
-      empty.style.display = filtered.length ? 'none' : 'block';
-      // Update header count: (displayed/total)
-      try { header.textContent = `${opts.title} (${filtered.length}/${opts.items.length})`; } catch {}
-
-      const maxToShow = Math.min(2000, filtered.length); // show many, still capped for perf
-      filtered.slice(0, maxToShow).forEach(i => {
-        const row = document.createElement('div');
-        row.style.cssText = `
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 0;
-        `;
-
-        // Left main button (select)
-        const leftBtn = document.createElement('button');
-        leftBtn.type = 'button';
-        const isSelected = selectedIds.has(i.id);
-        leftBtn.textContent = (multiMode ? ((isSelected ? '☑ ' : '☐ ')) : '') + i.label + (i.disabled ? '  (added)' : '');
-        leftBtn.disabled = !!i.disabled;
-        leftBtn.style.cssText = `
-          flex: 1;
-          text-align: left;
-          padding: 10px 12px;
-          background: ${i.disabled ? '#2a2a2a' : (multiMode && isSelected ? '#263238' : '#252525')};
-          color: ${i.disabled ? '#888' : '#fff'};
-          border: 1px solid #3a3a3a;
-          border-radius: 6px;
-          cursor: ${i.disabled ? 'not-allowed' : 'pointer'};
-        `;
-        leftBtn.addEventListener('click', () => {
-          if (i.disabled) return;
-          if (!multiMode) {
-            opts.onChoose(i.id);
-            close();
-            return;
-          }
-          if (selectedIds.has(i.id)) selectedIds.delete(i.id); else selectedIds.add(i.id);
-          // Update button text and background without full re-render for slight responsiveness
-          const nowSelected = selectedIds.has(i.id);
-          leftBtn.textContent = (multiMode ? ((nowSelected ? '☑ ' : '☐ ')) : '') + i.label + (i.disabled ? '  (added)' : '');
-          leftBtn.style.background = nowSelected ? '#263238' : '#252525';
-          renderFooter();
-        });
-        row.appendChild(leftBtn);
-
-        // Right action buttons (e.g., rename, delete) aligned far right
-        const actions: Array<{ icon: string; title?: string; onClick: (id: string) => void }> = [];
-        if (opts.rightActions && opts.rightActions.length) {
-          actions.push(...opts.rightActions);
-        } else if (opts.onRightAction) {
-          actions.push({ icon: (opts.rightActionIcon || '🗑'), title: opts.rightActionTitle, onClick: opts.onRightAction });
-        }
-        if (actions.length && !i.disabled) {
-          actions.forEach((action) => {
-            const rightBtn = document.createElement('button');
-            rightBtn.type = 'button';
-            rightBtn.textContent = action.icon;
-            if (action.title) rightBtn.title = action.title;
-            rightBtn.style.cssText = `
-              margin-left: 8px;
-              padding: 10px 12px;
-              background: #3a2a2a;
-              color: #fff;
-              border: 1px solid #5a3a3a;
-              border-radius: 6px;
-              cursor: pointer;
-            `;
-            rightBtn.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); action.onClick(i.id); });
-            row.appendChild(rightBtn);
-          });
-        }
-
-        list.appendChild(row);
-      });
-    };
-
-    // Footer for multi-select actions
-    const footer = document.createElement('div');
-    footer.style.cssText = `
-      display: none;
-      padding: 10px 12px;
-      border-top: 1px solid #444;
-      background: #1e1e1e;
-      display: ${multiEnabled ? 'flex' : 'none'};
-      gap: 8px;
-      justify-content: flex-end;
-    `;
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.textContent = 'Add Selected (0)';
-    addBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #1976d2; color: #fff; border: 1px solid #0d47a1; cursor: pointer; opacity: 0.6;`;
-    addBtn.disabled = true;
-    addBtn.addEventListener('click', () => {
-      if (!multiMode) return;
-      const ids = Array.from(selectedIds);
-      if (!ids.length) return;
-      if (typeof opts.onChooseMany === 'function') {
-        opts.onChooseMany(ids);
-      } else {
-        ids.forEach((id) => opts.onChoose(id));
-      }
-      close();
-    });
-    const clearBtn = document.createElement('button');
-    clearBtn.type = 'button';
-    clearBtn.textContent = 'Clear';
-    clearBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer;`;
-    clearBtn.addEventListener('click', () => {
-      selectedIds.clear();
-      render(search.value);
-      renderFooter();
-    });
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = `padding: 8px 12px; border-radius: 6px; background: #444; color: #fff; border: 1px solid #555; cursor: pointer;`;
-    cancelBtn.addEventListener('click', () => close());
-    footer.appendChild(clearBtn);
-    footer.appendChild(cancelBtn);
-    footer.appendChild(addBtn);
-
-    const renderFooter = () => {
-      const n = selectedIds.size;
-      addBtn.textContent = `Add Selected (${n})`;
-      addBtn.disabled = n === 0;
-      addBtn.style.opacity = n === 0 ? '0.6' : '1';
-      footer.style.display = (multiEnabled && multiMode) ? 'flex' : 'none';
-    };
-
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey as any); } });
-
-    listWrap.appendChild(empty);
-    listWrap.appendChild(list);
-    panel.appendChild(header);
-    panel.appendChild(search);
-    panel.appendChild(controls);
-    // Compute unique top-level folders from items once for initial chips container
-    const allowFolderChips = (Array.isArray(opts.folderChips) && opts.folderChips.length > 0)
-      || ((opts.items || []).some((i) => /[\\/]/.test(i.id)));
-    if (allowFolderChips) {
-      const initialCounts: Record<string, number> = {};
-      (opts.items || []).forEach((i) => {
-        const parts = i.id.split(/[\\/]/);
-        const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-        initialCounts[top] = (initialCounts[top] || 0) + 1;
-      });
-      if (Object.keys(initialCounts).length) {
-        folderFeatureEnabled = true;
-        renderChips(initialCounts);
-        panel.appendChild(chipWrap);
-        panel.appendChild(subChipWrap);
-        // Initial render of subfolder chips if folders were pre-selected
-        renderSubChips();
-      }
-    }
-    panel.appendChild(listWrap);
-    panel.appendChild(footer);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-
-    search.addEventListener('input', () => render(search.value));
-    setTimeout(() => { search.focus(); render(''); renderFooter(); }, 0);
+    OverlayService.getInstance().showSearchOverlay(opts);
   }
 
   public static showNameOverlay(opts: { title: string; placeholder: string; initial?: string; submitLabel?: string; onCommit: (name: string) => void }): void {
