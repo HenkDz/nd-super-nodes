@@ -11,15 +11,29 @@ Modern, easy LoRA loader for ComfyUI.
 - Optional tags with collapsible groups
 - Duplicate detection (prevents adding the same LoRA twice)
 
+## ⚡ ND Power UI Enhancements
+
+Enhance standard ComfyUI nodes with advanced file picker overlays:
+
+- **Enhanced Nodes**: CheckpointLoader, VAELoader, LoraLoader, UNETLoader, CLIPLoader, ControlNetLoader, UpscaleModelLoader, and GGUF variants
+- **Visual Indicators**: Golden-bordered overlay widgets with lightning icon (⚡) for easy identification
+- **File Picker**: Click the overlay to open an advanced file browser with folder navigation and search
+- **Per-Node Toggle**: Enable/disable enhancements via right-click menu on individual nodes
+- **Persistence**: Settings and selections persist across workflow saves/loads
+
+To enable: Right-click on a supported node → "⚡ Enable ND Power UI"
+
 ## Install (Git clone)
 
 1) Go to your ComfyUI custom nodes folder:
    - Windows: `ComfyUI\custom_nodes`
    - macOS/Linux: `ComfyUI/custom_nodes`
 2) Clone this repo:
+
 ```
 git clone https://github.com/HenkDz/super-lora-loader.git super-lora-loader
 ```
+
 3) Restart ComfyUI
 
 ## Use
@@ -30,6 +44,7 @@ git clone https://github.com/HenkDz/super-lora-loader.git super-lora-loader
 4) Adjust strengths/trigger words; save a template if you like
 
 Tips:
+
 - In the overlay, use folder/subfolder chips to narrow large lists
 - The first selection updates the clicked row; extra selections append
 

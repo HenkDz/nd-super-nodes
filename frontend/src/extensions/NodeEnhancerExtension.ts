@@ -100,7 +100,6 @@ export class NodeEnhancerExtension {
   ];
 
   private static filePickerService: FilePickerService = FilePickerService.getInstance();
-  private static readonly INDICATOR_LABEL = '⚡ ND UI';
   private static readonly HIDDEN_WIDGET_SIZE = (_width?: number) => [0, -4] as [number, number];
   private static readonly DEBUG = true;
 
@@ -169,22 +168,24 @@ export class NodeEnhancerExtension {
         const margin = 6;
         const gutter = 10;
         const inset = 8;
-        const caretPadding = 14;
-        const x = margin + gutter;
-        const y = widgetY;
-        const availableWidth = Math.max(60, widgetWidth - margin * 2 - gutter * 2);
-        const w = Math.max(120, Math.min(availableWidth, (nodeRef?.size?.[0] || widgetWidth) - 24));
+  const x = margin + gutter;
+  const y = widgetY;
+  const availableWidth = Math.max(60, widgetWidth - margin * 2 - gutter * 2);
+  const w = Math.max(120, Math.min(availableWidth, (nodeRef?.size?.[0] || widgetWidth) - 24));
+  const caretX = x + w - inset - 12;
+  const iconX = caretX + 10;
+  const valueEnd = caretX - 10;
         const labelText = this._ndWidgetLabel || config.widgetName;
         const rawValue = (this._ndDisplayValue && String(this._ndDisplayValue)) || this._ndPlaceholder;
         const isPlaceholder = rawValue === this._ndPlaceholder;
 
         ctx.save();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = '#555';
+        ctx.strokeStyle = '#FFD700';
         ctx.fillStyle = '#1f1f1f';
         if (typeof ctx.roundRect === 'function') {
           ctx.beginPath();
-          ctx.roundRect(x, y, w, H, 5);
+          ctx.roundRect(x, y, w, H, 8);
           ctx.fill();
           ctx.stroke();
         } else {
@@ -197,34 +198,26 @@ export class NodeEnhancerExtension {
 
         const labelFullWidth = ctx.measureText(labelText).width;
         const valueFullWidth = ctx.measureText(rawValue).width;
-        const valueEnd = x + w - inset - caretPadding;
         const labelSpacing = 8;
 
+        const totalSpace = valueEnd - (x + inset);
+        const neededValueWidth = Math.min(valueFullWidth, totalSpace);
+        const availableForLabel = totalSpace - neededValueWidth;
+
         let showLabel = labelFullWidth > 0;
-        let labelWidth = Math.min(labelFullWidth, w * 0.35);
-        let valueStart = showLabel ? x + inset + labelWidth + labelSpacing : x + inset;
-        let valueMaxWidth = Math.max(12, valueEnd - valueStart);
+        let labelWidth = 0;
 
-        if (valueFullWidth > valueMaxWidth && showLabel) {
+        if (showLabel && availableForLabel > labelSpacing) {
+          labelWidth = Math.min(labelFullWidth, availableForLabel - labelSpacing);
+          showLabel = labelWidth > 0;
+        } else {
           showLabel = false;
-          labelWidth = 0;
-          valueStart = x + inset;
-          valueMaxWidth = Math.max(12, valueEnd - valueStart);
         }
 
-        let displayLabel = '';
-        if (showLabel) {
-          const labelMaxWidth = Math.max(12, valueStart - (x + inset) - labelSpacing);
-          displayLabel = labelFullWidth <= labelMaxWidth
-            ? labelText
-            : NodeEnhancerExtension.truncateText(ctx, labelText, labelMaxWidth, false);
-          if (!displayLabel.trim()) {
-            showLabel = false;
-            valueStart = x + inset;
-            valueMaxWidth = Math.max(12, valueEnd - valueStart);
-          }
-        }
+        const valueStart = showLabel ? x + inset + labelWidth + labelSpacing : x + inset;
+        const valueMaxWidth = Math.max(12, valueEnd - valueStart);
 
+        const displayLabel = showLabel ? NodeEnhancerExtension.truncateText(ctx, labelText, labelWidth, false) : '';
         const displayValue = valueFullWidth <= valueMaxWidth
           ? rawValue
           : NodeEnhancerExtension.truncateText(ctx, rawValue, valueMaxWidth, false);
@@ -239,9 +232,12 @@ export class NodeEnhancerExtension {
         ctx.fillStyle = isPlaceholder ? '#7a7a7a' : '#ffffff';
         ctx.fillText(displayValue, valueEnd, y + H / 2);
 
-        ctx.fillStyle = '#888';
         ctx.textAlign = 'center';
-        ctx.fillText('▾', x + w - inset - 4, y + H / 2 + 1);
+        ctx.fillStyle = '#ffd54f';
+        ctx.fillText('⚡', iconX, y + H / 2 + 0.5);
+
+        ctx.fillStyle = '#888';
+        ctx.fillText('▾', caretX, y + H / 2 + 1);
 
         ctx.restore();
 
@@ -548,14 +544,6 @@ export class NodeEnhancerExtension {
       return options;
     };
 
-    const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
-    nodeType.prototype.onDrawForeground = function(ctx: any) {
-      if (originalOnDrawForeground) {
-        originalOnDrawForeground.call(this, ctx);
-      }
-      NodeEnhancerExtension.drawSelectorBadge(this, ctx);
-    };
-
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
       const data = originalSerialize ? originalSerialize.apply(this, arguments) : {};
@@ -771,50 +759,6 @@ export class NodeEnhancerExtension {
     if (!node.__ndPowerEnabled) return;
 
     // Legacy indicator is kept for compatibility but hidden by default.
-  }
-
-  private static drawSelectorBadge(node: any, ctx: any): void {
-    if (!node.__ndPowerEnabled) return;
-
-    const titleHeight = node.constructor?.title_height ?? node.title_height ?? 24;
-    const nodeWidth = node.size?.[0] || 140;
-
-    ctx.save();
-    ctx.font = '11px "Segoe UI", Arial, sans-serif';
-    const label = NodeEnhancerExtension.INDICATOR_LABEL;
-    const metrics = ctx.measureText(label);
-    const textWidth = metrics.width;
-    const textHeight = (metrics.actualBoundingBoxAscent ?? 7) + (metrics.actualBoundingBoxDescent ?? 3);
-    const horizontalPadding = 10;
-    const verticalPadding = 4;
-    const minBadgeWidth = textWidth + horizontalPadding * 2;
-    const badgeWidth = Math.max(56, Math.min(nodeWidth - 12, minBadgeWidth));
-    const badgeHeight = Math.max(16, textHeight + verticalPadding * 2);
-    const originX = Math.max(6, (nodeWidth - badgeWidth) / 2);
-    const originY = Math.max(2, (titleHeight - badgeHeight) / 2);
-    const radius = Math.min(8, badgeHeight / 2);
-
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = 'rgba(29, 114, 194, 0.22)';
-    if (typeof ctx.roundRect === 'function') {
-      ctx.beginPath();
-      ctx.roundRect(originX, originY, badgeWidth, badgeHeight, radius);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(76, 176, 255, 0.55)';
-      ctx.stroke();
-    } else {
-      ctx.fillRect(originX, originY, badgeWidth, badgeHeight);
-      ctx.strokeStyle = 'rgba(76, 176, 255, 0.55)';
-      ctx.strokeRect(originX, originY, badgeWidth, badgeHeight);
-    }
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#6ec6ff';
-    ctx.fillText(label, originX + badgeWidth / 2, originY + badgeHeight / 2 + 0.5);
-    ctx.restore();
-    ctx.restore();
   }
 
   private static applyTitleBadge(node: any): void {
