@@ -23,18 +23,30 @@ Enhance standard ComfyUI nodes with advanced file picker overlays:
 
 To enable: Right-click on a supported node → "⚡ Enable ND Power UI"
 
-## Install (Git clone)
+## Install
 
-1) Go to your ComfyUI custom nodes folder:
+### Option 1: Compiled Release (Recommended for Users)
+For a lightweight install without source code:
+
+1. Go to [Releases](https://github.com/HenkDz/super-lora-loader/releases) and download the latest ZIP (e.g., `super-lora-loader-v1.0.0.zip`).
+2. Extract to your ComfyUI custom nodes folder:
    - Windows: `ComfyUI\custom_nodes`
    - macOS/Linux: `ComfyUI/custom_nodes`
-2) Clone this repo:
+3. Restart ComfyUI.
 
-```
+### Option 2: Full Repo (For Developers/Contributors)
+To get the full source code and contribute:
+
+1. Go to your ComfyUI custom nodes folder:
+   - Windows: `ComfyUI\custom_nodes`
+   - macOS/Linux: `ComfyUI/custom_nodes`
+2. Clone this repo:
+
+```bash
 git clone https://github.com/HenkDz/super-lora-loader.git super-lora-loader
 ```
 
-3) Restart ComfyUI
+1. Restart ComfyUI
 
 ## Use
 

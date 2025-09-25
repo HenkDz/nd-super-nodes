@@ -26,6 +26,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 ## Project Overview
 
 **Super LoRA Loader** is an advanced ComfyUI custom node that provides:
+
 - Multiple LoRA loading with individual controls
 - Custom UI with drag-and-drop, inline editing, and modal dialogs
 - Tag-based organization system
@@ -34,6 +35,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 - Real-time UI updates with backend synchronization
 
 **Key Technical Achievements:**
+
 - ✅ Custom widget rendering with precise click handling
 - ✅ Zero-dependency bridge pattern for backend communication
 - ✅ Advanced UI components (overlays, inline editors, search dialogs)
@@ -45,6 +47,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 ## The Development Journey
 
 ### Phase 1: The Empty Node Problem
+
 **Problem**: Node appeared in ComfyUI but showed no custom widgets - only standard inputs/outputs.
 
 **Root Cause**: Node registration issues combined with incorrect widget creation patterns.
@@ -52,6 +55,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 **Solution**: Proper extension registration with `beforeRegisterNodeDef` hook and custom widget architecture.
 
 ### Phase 2: Click Handler Nightmares
+
 **Problem**: Custom UI elements were unclickable despite proper positioning.
 
 **Root Cause**: Coordinate system mismatch between drawing and event handling (6-pixel offset).
@@ -59,6 +63,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 **Solution**: Unified coordinate system with shared constants and proper local coordinate transformation.
 
 ### Phase 3: Backend Communication Hell
+
 **Problem**: Beautiful UI but no data reaching the backend for processing.
 
 **Root Cause**: ComfyUI's widget serialization system conflicts with custom widgets.
@@ -66,6 +71,7 @@ This guide documents the complete development journey of the **Super LoRA Loader
 **Solution**: Bridge pattern - inject serialized data directly into node during serialization.
 
 ### Phase 4: Advanced Feature Integration
+
 **Success**: Complete system with all planned features working seamlessly.
 
 ---
@@ -75,9 +81,11 @@ This guide documents the complete development journey of the **Super LoRA Loader
 ### Challenge 1: The Empty Node Registration Issue
 
 #### Problem Description
+
 When adding the node to ComfyUI, it appeared as a skeleton with only inputs/outputs visible - no custom widgets, buttons, or UI elements.
 
 #### Root Causes Identified
+
 1. **Incorrect Extension Registration**: Missing proper `beforeRegisterNodeDef` implementation
 2. **Widget Creation Failures**: Attempting to use rgthree patterns without rgthree infrastructure
 3. **Missing Base Classes**: Trying to use `addCustomWidget()` method that doesn't exist in base ComfyUI
@@ -109,6 +117,7 @@ app.registerExtension(superLoraExtension);
 ```
 
 #### Key Insights
+
 - **Always register**: Never block node registration on errors - provide fallback functionality
 - **Service initialization**: Initialize all services before node setup
 - **Override methods**: Properly override `onNodeCreated`, `onDrawForeground`, `onMouseDown`, etc.
@@ -116,9 +125,11 @@ app.registerExtension(superLoraExtension);
 ### Challenge 2: Click Handler Coordinate Mismatch
 
 #### Problem Description
+
 Custom UI elements were drawn correctly but completely unclickable, except for the checkmark button.
 
 #### Root Cause Analysis
+
 1. **Dual Coordinate Systems**: Drawing used `NODE_WIDGET_TOP_OFFSET = 64`, mouse handling used `70`
 2. **Hitbox Definition Issues**: Checkmark worked due to larger hitbox and vertical centering
 3. **Local vs Global Coordinates**: Event positions weren't properly transformed to widget-local coordinates
@@ -142,6 +153,7 @@ private static handleMouseEvent(node: any, event: any, pos: any, handler: string
 ```
 
 #### Key Technical Fix
+
 ```typescript
 // CRITICAL: Transform global click coordinates to widget-local coordinates
 const localPos = [pos[0], pos[1] - widgetStartY];
@@ -153,9 +165,11 @@ if (widget[handler](event, localPos, node)) {
 ### Challenge 3: Backend Communication Breakdown
 
 #### Problem Description
+
 Beautiful UI with working widgets, but no data reaching the Python backend for LoRA processing.
 
 #### Root Cause Analysis
+
 1. **Widget Serialization Issues**: ComfyUI only serializes widgets from `node.widgets` array
 2. **Custom Widget Exclusion**: Custom widgets weren't being serialized
 3. **Data Path Disruption**: Complex widget systems interfered with ComfyUI's serialization
@@ -188,6 +202,7 @@ def load_loras(self, model, clip=None, lora_bundle=None, **kwargs):
 ```
 
 #### Bridge Widget Pattern
+
 ```typescript
 // Create a single, invisible bridge widget for reliable serialization
 const bridge = this.addWidget('text', 'lora_bundle', freshBundle, () => {}, {});
@@ -426,6 +441,7 @@ static drawCustomWidgets(node: any, ctx: any): void {
 ### Bridge Pattern Implementation
 
 #### Frontend: Data Injection
+
 ```typescript
 // SuperLoraNode.ts - serialize method
 nodeType.prototype.serialize = function() {
@@ -456,6 +472,7 @@ nodeType.prototype.serialize = function() {
 ```
 
 #### Backend: Data Processing
+
 ```python
 # super_lora_node.py
 def load_loras(self, model, clip=None, lora_bundle=None, **kwargs):
@@ -487,6 +504,7 @@ def load_loras(self, model, clip=None, lora_bundle=None, **kwargs):
 ### Data Structure
 
 **Frontend → Backend JSON Format:**
+
 ```json
 [
   {
@@ -843,21 +861,25 @@ export class LoraService {
 ### Common Issues & Solutions
 
 #### Issue 1: Empty Node (No Custom Widgets)
+
 **Symptoms**: Node appears but shows only inputs/outputs
 **Diagnosis**: Check console for registration errors
 **Solution**: Ensure proper `beforeRegisterNodeDef` implementation
 
 #### Issue 2: Unclickable UI Elements
+
 **Symptoms**: Elements drawn but not responsive to clicks
 **Diagnosis**: Check coordinate system mismatch
 **Solution**: Verify unified `NODE_WIDGET_TOP_OFFSET` constant usage
 
 #### Issue 3: No Backend Communication
+
 **Symptoms**: UI works but no LoRA processing
 **Diagnosis**: Check if `lora_bundle` reaches backend
 **Solution**: Verify bridge widget injection in `serialize()` method
 
 #### Issue 4: Serialization Failures
+
 **Symptoms**: Settings not saved/restored properly
 **Diagnosis**: Check custom widget serialization
 **Solution**: Implement proper `serializeCustomWidgets` and `deserializeCustomWidgets`
@@ -889,11 +911,13 @@ console.log('Serialized data:', node.serialize());
 ## Future Development Considerations
 
 ### 1. Performance Optimizations
+
 - **Widget Virtualization**: For nodes with many LoRAs
 - **Caching Strategies**: For API responses and expensive computations
 - **Lazy Loading**: For large LoRA lists and template systems
 
 ### 2. Enhanced Features
+
 - **Batch Operations**: Multi-select editing of LoRA properties
 - **Advanced Search**: Fuzzy search, filtering, and sorting
 - **Drag & Drop**: Reordering LoRAs and tags
@@ -901,17 +925,20 @@ console.log('Serialized data:', node.serialize());
 - **Keyboard Shortcuts**: Power user workflow acceleration
 
 ### 3. Integration Enhancements
+
 - **CivitAI Integration**: Auto-download LoRAs, model recommendations
 - **Workflow Integration**: Better integration with ComfyUI workflows
 - **Plugin System**: Extensible architecture for custom LoRA types
 
 ### 4. UI/UX Improvements
+
 - **Responsive Design**: Better mobile/tablet support
 - **Accessibility**: Keyboard navigation, screen reader support
 - **Theming**: Customizable appearance and dark/light modes
 - **Animations**: Smooth transitions and micro-interactions
 
 ### 5. Developer Experience
+
 - **TypeScript Support**: Better type definitions and IDE support
 - **Testing Framework**: Unit tests for core functionality
 - **Documentation**: Auto-generated API documentation
@@ -932,6 +959,7 @@ The **Super LoRA Loader** represents a comprehensive solution to the challenges 
 This implementation serves as a reference for building sophisticated ComfyUI nodes with modern web technologies, providing both immediate functionality and a foundation for future enhancements.
 
 **Key Success Factors:**
+
 - **Architectural Clarity**: Clean separation of concerns with service layers
 - **Error Resilience**: Never-fail approach to critical systems
 - **User Experience**: Immediate feedback and intuitive interactions
