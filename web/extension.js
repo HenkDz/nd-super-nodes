@@ -4853,7 +4853,7 @@ console.log(`${EXTENSION_NAME$1}: Registering extension with ComfyUI`);
 app$1.registerExtension(nodeEnhancerExtension);
 console.log(`${EXTENSION_NAME$1}: Extension registered successfully`);
 const EXTENSION_NAME = "SuperLoraLoader";
-const NODE_TYPE = "SuperLoraLoader";
+const NODE_TYPE = "NdSuperLoraLoader";
 const superLoraExtension = {
   name: EXTENSION_NAME,
   // Extension settings

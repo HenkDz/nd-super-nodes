@@ -13,7 +13,7 @@ import './extensions/NodeEnhancer';
 
 // Extension configuration
 const EXTENSION_NAME = 'SuperLoraLoader';
-const NODE_TYPE = 'SuperLoraLoader';
+const NODE_TYPE = 'NdSuperLoraLoader';
 
 // Main extension object
 const superLoraExtension: ComfyExtension = {
