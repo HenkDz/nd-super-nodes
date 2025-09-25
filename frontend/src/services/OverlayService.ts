@@ -35,6 +35,7 @@ export type ToastType = 'success' | 'warning' | 'error' | 'info';
 
 export class OverlayService {
   private static instance: OverlayService;
+  private stylesInjected = false;
 
   static getInstance(): OverlayService {
     if (!OverlayService.instance) {
@@ -44,6 +45,8 @@ export class OverlayService {
   }
 
   showSearchOverlay(options: OverlayOptions): void {
+    this.ensureOverlayStyles();
+
     const baseFolderKey = options.baseFolderName || 'files';
     const restoredState = this.restoreOverlayState(baseFolderKey);
 
@@ -117,9 +120,10 @@ export class OverlayService {
     `;
 
     const multiLabel = document.createElement('label');
-    multiLabel.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+    multiLabel.className = 'nd-overlay-multi-toggle';
     const multiToggle = document.createElement('input');
     multiToggle.type = 'checkbox';
+    multiToggle.className = 'nd-overlay-multi-toggle-checkbox';
     multiToggle.addEventListener('change', () => {
       multiMode = !!multiToggle.checked;
       render(search.value);
@@ -127,15 +131,17 @@ export class OverlayService {
     });
     const multiText = document.createElement('span');
     multiText.textContent = 'Multi-select';
+    multiText.className = 'nd-overlay-multi-toggle-label';
     multiLabel.appendChild(multiToggle);
     multiLabel.appendChild(multiText);
     controls.appendChild(multiLabel);
 
-    const chipWrap = document.createElement('div');
-    chipWrap.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;';
+  const chipWrap = document.createElement('div');
+  chipWrap.className = 'nd-overlay-chips-container';
 
-    const subChipWrap = document.createElement('div');
-    subChipWrap.style.cssText = 'display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;';
+  const subChipWrap = document.createElement('div');
+  subChipWrap.className = 'nd-overlay-subchips-container';
+  subChipWrap.style.display = 'none';
 
     let folderFeatureEnabled = false;
     const activeFolders = new Set<string>(restoredState.activeFolders);
@@ -170,31 +176,60 @@ export class OverlayService {
 
     const renderChips = (folderCounts: Record<string, number>) => {
       chipWrap.innerHTML = '';
-      const allFolderNames = Object.keys(folderCounts);
-      allFolderNames.sort((a, b) => {
-        if (a === ROOT_KEY) return -1;
-        if (b === ROOT_KEY) return 1;
-        return a.localeCompare(b);
-      });
+      const header = document.createElement('div');
+      header.className = 'nd-overlay-chip-header';
+      header.textContent = 'Folders';
+      chipWrap.appendChild(header);
+
+      const chipList = document.createElement('div');
+      chipList.className = 'nd-overlay-chip-list';
+      chipWrap.appendChild(chipList);
+
+      const allFolderNames = Object.keys(folderCounts)
+        .sort((a, b) => {
+          if (a === ROOT_KEY) return -1;
+          if (b === ROOT_KEY) return 1;
+          return a.localeCompare(b);
+        });
+
+      const baseFolderName = options.baseFolderName || 'files';
+
       allFolderNames.forEach((name) => {
         const chip = document.createElement('button');
         chip.type = 'button';
+        chip.className = 'nd-overlay-chip';
         const isActive = activeFolders.has(name);
-        const baseFolderName = options.baseFolderName || 'files';
-        const label = (name === ROOT_KEY) ? `${baseFolderName} - root` : name;
-        const count = folderCounts[name] ?? 0;
-        chip.textContent = `${label} (${count})`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? '#333' : '#252525'};
-          color: #fff; border: ${isActive ? '2px solid #66aaff' : '1px solid #3a3a3a'}; cursor: pointer;
-        `;
+        if (isActive) chip.classList.add('is-active');
+
+        const icon = document.createElement('span');
+        icon.className = 'nd-overlay-chip-icon';
+        icon.textContent = name === ROOT_KEY ? '🏠' : '📁';
+
+        const label = document.createElement('span');
+        label.className = 'nd-overlay-chip-label';
+        label.textContent = (name === ROOT_KEY) ? `${baseFolderName} (root)` : name;
+
+        const count = document.createElement('span');
+        count.className = 'nd-overlay-chip-count';
+        count.textContent = String(folderCounts[name] ?? 0);
+
+        chip.appendChild(icon);
+        chip.appendChild(label);
+        chip.appendChild(count);
+
+        chip.title = name === ROOT_KEY ? `${baseFolderName} root` : name;
         chip.addEventListener('click', () => {
-          if (activeFolders.has(name)) activeFolders.delete(name); else activeFolders.add(name);
+          if (activeFolders.has(name)) {
+            activeFolders.delete(name);
+          } else {
+            activeFolders.add(name);
+          }
           this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
           render(search.value);
           renderSubChips();
         });
-        chipWrap.appendChild(chip);
+
+        chipList.appendChild(chip);
       });
     };
 
@@ -225,33 +260,57 @@ export class OverlayService {
         subToTops[sub].add(top);
       });
 
+      const header = document.createElement('div');
+      header.className = 'nd-overlay-chip-header';
+      header.textContent = activeFolders.size === 1 ? 'Subfolders' : 'Subfolders (selected)';
+      subChipWrap.appendChild(header);
+
+      const chipList = document.createElement('div');
+      chipList.className = 'nd-overlay-chip-list';
+      subChipWrap.appendChild(chipList);
+
       Object.keys(subCountsByKey).sort().forEach((key) => {
         const [top, sub] = key.split('/');
         const isRootSub = (sub === ROOT_KEY);
-        let label: string;
-        if (isRootSub) {
-          label = `${top} - root`;
-        } else {
-          const duplicate = subToTops[sub]?.size && subToTops[sub]!.size > 1;
-          label = duplicate ? `${sub} (${top})` : sub;
-        }
-        const count = subCountsByKey[key] ?? 0;
+        const duplicate = subToTops[sub]?.size && subToTops[sub]!.size > 1;
+        const labelText = isRootSub ? `${top} (root)` : duplicate ? `${top} / ${sub}` : sub;
+        const countVal = subCountsByKey[key] ?? 0;
+
         const chip = document.createElement('button');
         chip.type = 'button';
+        chip.className = 'nd-overlay-chip nd-overlay-chip--sub';
         const isActive = activeSubfolders.has(key);
-        chip.textContent = `${label} (${count})`;
-        chip.title = `${top}/${sub}`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? '#333' : '#252525'};
-          color: #fff; border: ${isActive ? '2px solid #66aaff' : '1px solid #3a3a3a'}; cursor: pointer;
-        `;
+        if (isActive) chip.classList.add('is-active');
+
+        const icon = document.createElement('span');
+        icon.className = 'nd-overlay-chip-icon';
+        icon.textContent = isRootSub ? '🗂️' : '↳';
+
+        const label = document.createElement('span');
+        label.className = 'nd-overlay-chip-label';
+        label.textContent = labelText;
+
+        const count = document.createElement('span');
+        count.className = 'nd-overlay-chip-count';
+        count.textContent = String(countVal);
+
+        chip.appendChild(icon);
+        chip.appendChild(label);
+        chip.appendChild(count);
+
+        chip.title = `${top}/${isRootSub ? '(root)' : sub}`;
         chip.addEventListener('click', () => {
-          if (activeSubfolders.has(key)) activeSubfolders.delete(key); else activeSubfolders.add(key);
+          if (activeSubfolders.has(key)) {
+            activeSubfolders.delete(key);
+          } else {
+            activeSubfolders.add(key);
+          }
           this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
           render(search.value);
           renderSubChips();
         });
-        subChipWrap.appendChild(chip);
+
+        chipList.appendChild(chip);
       });
     };
 
@@ -307,19 +366,66 @@ export class OverlayService {
 
         const leftBtn = document.createElement('button');
         leftBtn.type = 'button';
-        const isSelected = selectedIds.has(item.id);
-        leftBtn.textContent = (multiMode ? (isSelected ? '☑ ' : '☐ ') : '') + item.label + (item.disabled ? '  (added)' : '');
+        leftBtn.className = 'nd-overlay-item-button';
         leftBtn.disabled = !!item.disabled;
-        leftBtn.style.cssText = `
-          flex: 1;
-          text-align: left;
-          padding: 10px 12px;
-          background: ${item.disabled ? '#2a2a2a' : (multiMode && isSelected ? '#263238' : '#252525')};
-          color: ${item.disabled ? '#888' : '#fff'};
-          border: 1px solid #3a3a3a;
-          border-radius: 6px;
-          cursor: ${item.disabled ? 'not-allowed' : 'pointer'};
-        `;
+
+  const rawParts = item.id.split(/[\\/]/);
+  const parts = rawParts.filter(Boolean);
+        const folderPath = parts.slice(0, -1);
+        const lastSegment = parts[parts.length - 1] || item.label;
+        const pathDisplay = folderPath.length ? folderPath.join(' / ') : '(root)';
+        const isFolder = !/\.[^./\\]{2,}$/i.test(lastSegment);
+        const iconGlyph = isFolder ? '📁' : '📄';
+        leftBtn.title = item.id;
+
+        const checkboxSpan = document.createElement('span');
+        checkboxSpan.className = 'nd-overlay-item-checkbox';
+  checkboxSpan.dataset.state = 'hidden';
+
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'nd-overlay-item-icon';
+        iconSpan.textContent = iconGlyph;
+        iconSpan.setAttribute('aria-hidden', 'true');
+
+        const textWrap = document.createElement('div');
+        textWrap.className = 'nd-overlay-item-text';
+
+        const primaryLine = document.createElement('div');
+        primaryLine.className = 'nd-overlay-item-title';
+        primaryLine.textContent = item.label;
+
+        if (item.disabled) {
+          const badge = document.createElement('span');
+          badge.className = 'nd-overlay-item-badge';
+          badge.textContent = 'added';
+          primaryLine.appendChild(badge);
+        }
+
+        const secondaryLine = document.createElement('div');
+        secondaryLine.className = 'nd-overlay-item-path';
+        secondaryLine.textContent = pathDisplay;
+        secondaryLine.style.display = folderPath.length ? 'block' : 'none';
+
+        textWrap.appendChild(primaryLine);
+        textWrap.appendChild(secondaryLine);
+
+        leftBtn.appendChild(checkboxSpan);
+        leftBtn.appendChild(iconSpan);
+        leftBtn.appendChild(textWrap);
+
+        const applyState = () => {
+          const isSelected = selectedIds.has(item.id);
+          if (!multiMode) {
+            checkboxSpan.dataset.state = 'hidden';
+          } else {
+            checkboxSpan.dataset.state = isSelected ? 'checked' : 'unchecked';
+          }
+          leftBtn.classList.toggle('is-disabled', !!item.disabled);
+          leftBtn.classList.toggle('is-selected', multiMode && isSelected);
+        };
+
+        applyState();
+
         leftBtn.addEventListener('click', () => {
           if (item.disabled) return;
           if (!multiMode) {
@@ -328,9 +434,7 @@ export class OverlayService {
             return;
           }
           if (selectedIds.has(item.id)) selectedIds.delete(item.id); else selectedIds.add(item.id);
-          const nowSelected = selectedIds.has(item.id);
-          leftBtn.textContent = (multiMode ? (nowSelected ? '☑ ' : '☐ ') : '') + item.label + (item.disabled ? '  (added)' : '');
-          leftBtn.style.background = nowSelected ? '#263238' : '#252525';
+          applyState();
           renderFooter();
         });
         row.appendChild(leftBtn);
@@ -510,6 +614,226 @@ export class OverlayService {
         try { toast.remove(); } catch {}
       }, 300);
     }, timeout);
+  }
+
+  private ensureOverlayStyles(): void {
+    if (this.stylesInjected) return;
+    try {
+      if (typeof document === 'undefined') return;
+      const existing = document.querySelector('style[data-super-lora-overlay-style="1"]');
+      if (existing) {
+        this.stylesInjected = true;
+        return;
+      }
+      const style = document.createElement('style');
+      style.setAttribute('data-super-lora-overlay-style', '1');
+      style.textContent = `
+        [data-super-lora-overlay="1"] .nd-overlay-item-button {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 8px 10px;
+          background: #252525;
+          border: 1px solid #3a3a3a;
+          border-radius: 6px;
+          color: #fff;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button:hover:not(.is-disabled) {
+          background: #2c2c2c;
+          border-color: #4a4a4a;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button.is-disabled {
+          background: #2a2a2a;
+          color: #888;
+          cursor: not-allowed;
+          border-color: #343434;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button.is-selected {
+          background: #263238;
+          border-color: #4a90e2;
+          box-shadow: inset 0 0 0 1px rgba(74, 144, 226, 0.35);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox {
+          width: 16px;
+          height: 16px;
+          min-width: 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #4a4a4a;
+          border-radius: 4px;
+          background: #1d1d1d;
+          color: #8ab4f8;
+          font-size: 12px;
+          line-height: 1;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="hidden"] {
+          opacity: 0;
+          visibility: hidden;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="unchecked"]::after {
+          content: '';
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="checked"] {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.18);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="checked"]::after {
+          content: '✔';
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox::after {
+          font-size: 10px;
+          color: #8ab4f8;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-icon {
+          font-size: 16px;
+          line-height: 1.5;
+          opacity: 0.85;
+          min-width: 18px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-text {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          overflow: hidden;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-title {
+          font-size: 14px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-path {
+          font-size: 12px;
+          color: #9aa4b4;
+          opacity: 0.85;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-badge {
+          font-size: 11px;
+          color: #9aa4b4;
+          border: 1px solid #4a4f55;
+          border-radius: 999px;
+          padding: 1px 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chips-container,
+        [data-super-lora-overlay="1"] .nd-overlay-subchips-container {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 0 12px 6px 12px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-header {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #9aa4b4;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid #3a3a3a;
+          background: #252525;
+          color: #fff;
+          cursor: pointer;
+          font-size: 12px;
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip.is-active {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.18);
+          box-shadow: inset 0 0 0 1px rgba(74, 144, 226, 0.35);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-icon {
+          font-size: 14px;
+          opacity: 0.85;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-label {
+          font-weight: 500;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-count {
+          font-size: 11px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 0 6px;
+          border-radius: 999px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip--sub {
+          font-size: 11px;
+          padding: 5px 9px;
+          background: #1f1f1f;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip--sub.is-active {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: #66aaff;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid #3a3a3a;
+          background: #1f1f1f;
+          color: #fff;
+          font-size: 12px;
+          cursor: pointer;
+          user-select: none;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 4px;
+          border: 1px solid #4a4a4a;
+          background: #111;
+          position: relative;
+          cursor: pointer;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox:checked {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.2);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox:checked::after {
+          content: '✔';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -55%);
+          font-size: 10px;
+          color: #8ab4f8;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-label {
+          font-weight: 500;
+          letter-spacing: 0.01em;
+        }
+      `;
+      document.head.appendChild(style);
+      this.stylesInjected = true;
+    } catch {}
   }
 
   private removeExistingOverlays(): void {

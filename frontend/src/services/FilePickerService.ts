@@ -15,9 +15,10 @@ export interface FileTypeConfig {
 }
 
 export interface FileItem {
-  id: string;                   // Full path relative to ComfyUI
+  id: string;                   // Value applied to LiteGraph widget (relative path)
   label: string;                // Display name (filename without extension)
-  path: string;                 // Directory path
+  path: string;                 // Relative path (matches ComfyUI combo values)
+  fullPath: string;             // Absolute path on disk
   filename: string;             // Just the filename
   extension: string;            // File extension
   size?: number;                // File size in bytes
@@ -132,15 +133,19 @@ export class FilePickerService {
       }
 
       const data = await response.json();
-      const files: FileItem[] = data.files?.map((file: any) => ({
-        id: file.path,
-        label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft)$/i, ''),
-        path: file.path,
-        filename: file.name,
-        extension: file.extension || '',
-        size: file.size,
-        modified: file.modified
-      })) || [];
+      const files: FileItem[] = data.files?.map((file: any) => {
+        const relativePath: string = file.relative_path || file.path;
+        return {
+          id: relativePath,
+          label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft|gguf)$/i, ''),
+          path: relativePath,
+          fullPath: file.path,
+          filename: file.name,
+          extension: file.extension || '',
+          size: file.size,
+          modified: file.modified
+        } as FileItem;
+      }) || [];
 
       // Cache the results
       this.setCachedFiles(cacheKey, files);

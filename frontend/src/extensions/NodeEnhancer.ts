@@ -30,6 +30,12 @@ const nodeEnhancerExtension: ComfyExtension = {
       name: 'Auto-enhance All Nodes',
       type: 'boolean',
       defaultValue: false
+    },
+    {
+      id: 'nodeEnhancer.enableContextToggle',
+      name: 'Show ND Selector Toggle in Node Menu',
+      type: 'boolean',
+      defaultValue: true
     }
   ],
 
