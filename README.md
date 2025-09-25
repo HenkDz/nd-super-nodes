@@ -1,6 +1,6 @@
-# Super LoRA Loader
+# ND Super Nodes
 
-Modern, easy LoRA loader for ComfyUI.
+A suite of modern, easy-to-use custom nodes for ComfyUI, including enhanced LoRA loading and powerful UI enhancements for file selection.
 
 ## 🌟 Features
 
@@ -28,7 +28,7 @@ To enable: Right-click on a supported node → "⚡ Enable ND Power UI"
 ### Option 1: Compiled Release (Recommended for Users)
 For a lightweight install without source code:
 
-1. Go to [Releases](https://github.com/HenkDz/super-lora-loader/releases) and download the latest ZIP (e.g., `super-lora-loader-v1.0.0.zip`).
+1. Go to [Releases](https://github.com/HenkDz/nd-super-nodes/releases) and download the latest ZIP (e.g., `nd-super-nodes-v1.0.0.zip`).
 2. Extract to your ComfyUI custom nodes folder:
    - Windows: `ComfyUI\custom_nodes`
    - macOS/Linux: `ComfyUI/custom_nodes`
@@ -43,7 +43,9 @@ To get the full source code and contribute:
 2. Clone this repo:
 
 ```bash
-git clone https://github.com/HenkDz/super-lora-loader.git super-lora-loader
+```
+git clone https://github.com/HenkDz/nd-super-nodes.git nd-super-nodes
+```
 ```
 
 1. Restart ComfyUI

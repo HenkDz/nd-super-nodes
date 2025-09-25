@@ -1,4 +1,4 @@
-# Release script for Super LoRA Loader
+# Release script for ND Super Nodes
 # Usage: .\release.ps1 -Version "1.1.0"
 
 param(
@@ -6,7 +6,7 @@ param(
     [string]$Version
 )
 
-$ReleaseName = "super-lora-loader-v$Version"
+$ReleaseName = "nd-super-nodes-v$Version"
 $ZipPath = "$ReleaseName.zip"
 $TempDir = "release-temp"
 
@@ -28,13 +28,13 @@ This is a compiled release containing only the runtime files needed for ComfyUI.
 
 ## Installation
 1. Download `$ReleaseName.zip` from Assets below.
-2. Extract to your ComfyUI `custom_nodes` folder (e.g., `ComfyUI/custom_nodes/super-lora-loader`).
+2. Extract to your ComfyUI `custom_nodes` folder (e.g., `ComfyUI/custom_nodes/nd-super-nodes`).
 3. Restart ComfyUI.
 
 For full source code, clone the repo instead.
 "@
 
-gh release create "v$Version" $ZipPath --title "Super LoRA Loader v$Version (Compiled Release)" --notes $Notes
+gh release create "v$Version" $ZipPath --title "ND Super Nodes v$Version (Compiled Release)" --notes $Notes
 
 # Clean up
 Remove-Item -Recurse -Force $TempDir

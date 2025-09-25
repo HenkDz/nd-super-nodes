@@ -1,6 +1,6 @@
 """
-Super LoRA Loader - ComfyUI Custom Node
-A modern, standalone implementation for loading multiple LoRAs with advanced features.
+ND Super Nodes - ComfyUI Custom Nodes
+A suite of modern, standalone implementations for enhanced LoRA loading and UI features.
 """
 
 # Import from the backend module
@@ -18,10 +18,10 @@ __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 
 # Module metadata
 __version__ = "1.0.0"
-__author__ = "Super LoRA Loader Team"
-__description__ = "A modern Super LoRA Loader with advanced features"
+__author__ = "ND Super Nodes Team"
+__description__ = "A suite of ND Super Nodes with advanced LoRA loading and UI enhancements"
 
-print("Super LoRA Loader: Module loaded successfully")
+print("ND Super Nodes: Module loaded successfully")
 
 # This is the crucial part that makes the `web` directory available.
 WEB_DIRECTORY = "./web"
@@ -33,8 +33,8 @@ try:
     
     # Register our API routes
     register_routes(PromptServer.instance.app)
-    print("Super LoRA Loader: Web API routes registered")
+    print("ND Super Nodes: Web API routes registered")
 except ImportError:
-    print("Super LoRA Loader: Server not available, skipping web API registration")
+    print("ND Super Nodes: Server not available, skipping web API registration")
 except Exception as e:
-    print(f"Super LoRA Loader: Failed to register web API routes: {e}")
+    print(f"ND Super Nodes: Failed to register web API routes: {e}")
