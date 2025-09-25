@@ -5,23 +5,19 @@ A suite of standalone, modern implementations for enhanced LoRA loading and UI f
 
 try:
     from .nd_super_lora_node import NdSuperLoraLoader
-    from .test_text_node import SuperTestEcho
 except ImportError:
     # Fallback for development/testing
     import sys
     import os
     sys.path.append(os.path.dirname(__file__))
     from nd_super_lora_node import NdSuperLoraLoader
-    from test_text_node import SuperTestEcho
 
 NODE_CLASS_MAPPINGS = {
     "NdSuperLoraLoader": NdSuperLoraLoader,
-    "NdSuperTestEcho": SuperTestEcho,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "NdSuperLoraLoader": "ND Super LoRA Loader",
-    "NdSuperTestEcho": "ND Super Test: Echo",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
