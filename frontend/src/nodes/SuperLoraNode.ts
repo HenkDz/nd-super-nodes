@@ -105,6 +105,31 @@ export class SuperLoraNode {
       return originalOnMouseUp ? originalOnMouseUp.call(this, event, pos) : false;
     };
 
+    const originalOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function(size: any, ...rest: any[]) {
+      const minHeight = SuperLoraNode.computeContentHeight(this);
+
+      if (Array.isArray(size)) {
+        size[1] = Math.max(size[1], minHeight);
+      } else if (size && typeof size === 'object') {
+        if (typeof size[1] === 'number') {
+          size[1] = Math.max(size[1], minHeight);
+        }
+        if (typeof size.y === 'number') {
+          size.y = Math.max(size.y, minHeight);
+        }
+      }
+
+      if (this.size) {
+        this.size[1] = Math.max(this.size[1], minHeight);
+      }
+
+      if (originalOnResize) {
+        return originalOnResize.apply(this, [size, ...rest]);
+      }
+      return undefined;
+    };
+
     // Override serialization to include custom widget data
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
@@ -165,22 +190,43 @@ export class SuperLoraNode {
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(_canvas: any, optionsArr?: any[]) {
       try {
-        // Respect both LiteGraph conventions: options via parameter and/or return value
         let options = Array.isArray(optionsArr) ? optionsArr : [];
         if (originalGetExtraMenuOptions) {
           const maybe = originalGetExtraMenuOptions.call(this, _canvas, options);
           if (Array.isArray(maybe)) options = maybe;
         }
-        options.push(null); // Separator
-        options.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
-        options.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
+
+        const hasAddLoRA = options.some((opt: any) => opt && opt.content === "🏷️ Add LoRA");
+        const hasSettings = options.some((opt: any) => opt && opt.content === "⚙️ Settings");
+
+        if (!hasAddLoRA || !hasSettings) {
+          if (options.length === 0 || options[options.length - 1] !== null) {
+            options.push(null);
+          }
+          if (!hasAddLoRA) {
+            options.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
+          }
+          if (!hasSettings) {
+            options.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
+          }
+        }
+
         return options;
       } catch {
-        // Always return a sane default to avoid other extensions crashing when they append
         const safe: any[] = optionsArr && Array.isArray(optionsArr) ? optionsArr : [];
-        safe.push(null);
-        safe.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
-        safe.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
+        const ensureSeparator = () => {
+          if (safe.length === 0 || safe[safe.length - 1] !== null) {
+            safe.push(null);
+          }
+        };
+        if (!safe.some((opt: any) => opt && opt.content === "🏷️ Add LoRA")) {
+          ensureSeparator();
+          safe.push({ content: "🏷️ Add LoRA", callback: (_event: any) => SuperLoraNode.showLoraSelector(this, undefined, undefined) });
+        }
+        if (!safe.some((opt: any) => opt && opt.content === "⚙️ Settings")) {
+          ensureSeparator();
+          safe.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
+        }
         return safe;
       }
     };
@@ -212,21 +258,20 @@ export class SuperLoraNode {
     node.customWidgets.push(new SuperLoraHeaderWidget());
     
     // Set minimum height only - preserve user's width preference
-    node.size = [node.size[0], Math.max(node.size[1], 100)];
+    const contentHeight = this.computeContentHeight(node);
+    node.size = [node.size[0], Math.max(node.size[1], contentHeight)];
     
     console.log('Super LoRA Loader: Advanced node setup complete');
   }
 
-  /**
-   * Calculate required node size based on widgets
-   */
-  static calculateNodeSize(node: any): void {
-    if (!node.customWidgets) return;
-    
+  private static computeContentHeight(node: any): number {
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
-    let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
+    let currentY = this.NODE_WIDGET_TOP_OFFSET;
 
-    // Determine the list of widgets that will actually render (non-zero height and not collapsed-by-tag)
+    if (!node?.customWidgets) {
+      return Math.max(currentY, 100);
+    }
+
     const renderable: any[] = [];
     for (const widget of node.customWidgets) {
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
@@ -237,21 +282,25 @@ export class SuperLoraNode {
       renderable.push(widget);
     }
 
-    // Accumulate heights including margins, ensuring last collapsed tag gets a bottom margin
     renderable.forEach((widget, index) => {
       const size = widget.computeSize();
       const height = widget instanceof SuperLoraWidget ? 34 : size[1];
       let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
       const isLast = index === renderable.length - 1;
       if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
-        // Give extra breathing room to allow resizing without toggling expand
         marginAfter = Math.max(marginDefault, 8);
       }
       currentY += height + marginAfter;
     });
 
-    // Update node size based on content
-    const newHeight = Math.max(currentY, 100);
+    return Math.max(currentY, 100);
+  }
+
+  /**
+   * Calculate required node size based on widgets
+   */
+  static calculateNodeSize(node: any): void {
+    const newHeight = this.computeContentHeight(node);
     // Preserve the user's preferred width - only update height
     if (node.size[1] !== newHeight) {
       node.size[1] = newHeight;

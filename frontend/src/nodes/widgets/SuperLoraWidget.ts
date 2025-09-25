@@ -39,13 +39,25 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
     const rowHeight = 28;
 
     ctx.save();
+    const innerWidth = Math.max(0, w - margin * 2);
+    const clampedHeight = Math.max(0, height);
+
+    ctx.beginPath();
+    ctx.rect(margin, posY, innerWidth, clampedHeight);
+    ctx.clip();
+
+    const bodyHeight = Math.max(4, height - 4);
+    const bodyY = posY + (height >= bodyHeight ? Math.floor((height - bodyHeight) / 2) : 0);
+    const cornerRadius = Math.min(6, bodyHeight / 2);
+
     ctx.fillStyle = "#2a2a2a";
     ctx.beginPath();
-    ctx.roundRect(margin, posY + 2, w - margin * 2, height - 4, 6);
+    ctx.roundRect(margin, bodyY, innerWidth, bodyHeight, cornerRadius || 0);
     ctx.fill();
     ctx.strokeStyle = "#3a3a3a";
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.clip();
 
     if (!this.value.enabled) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";

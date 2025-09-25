@@ -16,15 +16,22 @@ export class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
   }
 
   draw(ctx: any, node: any, w: number, posY: number, height: number): void {
-    const margin = 8;
-    const buttonHeight = 22;
-    const buttonSpacing = 6;
-    let posX = margin;
+  const margin = 8;
+  const buttonHeight = 24;
+  const buttonSpacing = 8;
+  let posX = margin;
 
     ctx.save();
-    ctx.fillStyle = "#2a2a2a";
+  ctx.beginPath();
+  ctx.rect(0, posY, w, height);
+  ctx.clip();
+
+  const headerGradient = ctx.createLinearGradient(0, posY, 0, posY + height);
+  headerGradient.addColorStop(0, "#2f2f2f");
+  headerGradient.addColorStop(1, "#232323");
+  ctx.fillStyle = headerGradient;
     ctx.fillRect(0, posY, w, height);
-    ctx.strokeStyle = "#3a3a3a";
+  ctx.strokeStyle = "#3a3a3a";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, posY + 0.5);
@@ -34,21 +41,97 @@ export class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     ctx.stroke();
 
     const midY = posY + height / 2;
-    ctx.font = "11px 'Segoe UI', Arial, sans-serif";
+    ctx.font = "500 11px 'Segoe UI', Arial, sans-serif";
     ctx.textBaseline = "middle";
 
-    const drawButton = (x: number, width: number, _color: string, text: string) => {
-      ctx.fillStyle = "#2a2a2a";
+    type ButtonStyle = {
+      gradient: [string, string];
+      border: string;
+      text: string;
+      innerStroke?: string;
+      shadow?: {
+        color: string;
+        blur: number;
+        offsetY?: number;
+      };
+      font?: string;
+      iconFont?: string;
+    };
+
+    const buttonStyles: Record<"primary" | "secondary", ButtonStyle> = {
+      primary: {
+        gradient: ["#4f81ff", "#2f60f0"],
+        border: "#1f3fbf",
+        text: "#f7f9ff",
+        innerStroke: "rgba(255, 255, 255, 0.18)",
+        shadow: { color: "rgba(56, 109, 255, 0.45)", blur: 10, offsetY: 1 },
+        font: "600 11px 'Segoe UI', Arial, sans-serif",
+        iconFont: "700 14px 'Segoe UI', Arial, sans-serif"
+      },
+      secondary: {
+        gradient: ["#3a3a3a", "#2c2c2c"],
+        border: "#4a4a4a",
+        text: "#dedede",
+        innerStroke: "rgba(255, 255, 255, 0.08)",
+        font: "500 11px 'Segoe UI', Arial, sans-serif",
+        iconFont: "600 13px 'Segoe UI', Arial, sans-serif"
+      }
+    };
+
+    type ButtonMode = "full" | "short" | "icon";
+
+    const modeWidths: Record<string, Record<ButtonMode, number>> = {
+      addLora: { full: 132, short: 92, icon: 44 },
+      default: { full: 100, short: 64, icon: 36 }
+    };
+
+    const drawButton = (
+      x: number,
+      width: number,
+      style: ButtonStyle,
+      label: string,
+      mode: ButtonMode
+    ) => {
+      const buttonY = posY + (height - buttonHeight) / 2;
+      ctx.save();
+      const gradient = ctx.createLinearGradient(x, buttonY, x, buttonY + buttonHeight);
+      gradient.addColorStop(0, style.gradient[0]);
+      gradient.addColorStop(1, style.gradient[1]);
+
       ctx.beginPath();
-      ctx.roundRect(x, posY + (height - buttonHeight) / 2, width, buttonHeight, 3);
+      if (style.shadow) {
+        ctx.shadowColor = style.shadow.color;
+        ctx.shadowBlur = style.shadow.blur;
+        ctx.shadowOffsetY = style.shadow.offsetY ?? 0;
+      }
+      ctx.fillStyle = gradient;
+      ctx.roundRect(x, buttonY, width, buttonHeight, 5);
       ctx.fill();
-      ctx.strokeStyle = "#3f3f3f";
+
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
       ctx.lineWidth = 1;
+      ctx.strokeStyle = style.border;
       ctx.stroke();
-      ctx.fillStyle = "#e0e0e0";
+
+      if (style.innerStroke) {
+        ctx.beginPath();
+        const inset = 0.6;
+        ctx.roundRect(x + inset, buttonY + inset, width - inset * 2, buttonHeight - inset * 2, 4);
+        ctx.strokeStyle = style.innerStroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = style.text;
       ctx.textAlign = "center";
-      const textX = x + width / 2;
-      ctx.fillText(text, textX, midY);
+      const font = mode === "icon" ? style.iconFont ?? "600 13px 'Segoe UI', Arial, sans-serif" : style.font ?? "500 11px 'Segoe UI', Arial, sans-serif";
+      ctx.font = font;
+      const verticalOffset = mode === "icon" ? -0.5 : 0;
+      ctx.fillText(label, x + width / 2, midY + verticalOffset);
+      ctx.restore();
     };
 
     const availableWidth = w - (margin * 2);
@@ -56,25 +139,114 @@ export class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     const toggleText = allEnabled ? 'Disable All' : 'Enable All';
     const toggleShort = allEnabled ? 'Disable' : 'Enable';
     const buttons = [
-      { id: 'addLora', color: "#2a2a2a", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
-      { id: 'toggleAll', color: "#2a2a2a", text: toggleText, shortText: toggleShort, icon: "⏯️", priority: 1 },
-
-      { id: 'saveTemplate', color: "#2a2a2a", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
-      { id: 'loadTemplate', color: "#2a2a2a", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
-      { id: 'settings', color: "#2a2a2a", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
+      { id: 'addLora', text: 'Add LoRA', shortText: 'Add', icon: '➕', style: buttonStyles.primary, initialMode: 'full' as ButtonMode, combineIcon: true },
+      { id: 'toggleAll', text: toggleText, shortText: toggleShort, icon: '⏯️', style: buttonStyles.secondary, initialMode: 'full' as ButtonMode },
+      { id: 'saveTemplate', text: 'Save Set', shortText: 'Save', icon: '💾', style: buttonStyles.secondary, initialMode: 'full' as ButtonMode },
+      { id: 'loadTemplate', text: 'Load Set', shortText: 'Load', icon: '📂', style: buttonStyles.secondary, initialMode: 'full' as ButtonMode },
+      { id: 'settings', text: 'Settings', shortText: 'Set', icon: '⚙️', style: buttonStyles.secondary, initialMode: 'full' as ButtonMode }
     ];
 
     const totalSpacing = buttonSpacing * (buttons.length - 1);
-    const buttonWidth = Math.max(40, (availableWidth - totalSpacing) / buttons.length);
-    const useShortText = buttonWidth < 60;
-    const useIconOnly = buttonWidth < 45;
 
-    buttons.forEach((btn) => {
-      const displayText = useIconOnly ? btn.icon : (useShortText ? btn.shortText : btn.text);
-      drawButton(posX, buttonWidth, btn.color, displayText);
-      this.hitAreas[btn.id].bounds = [posX, 0, buttonWidth, height];
-      posX += buttonWidth + buttonSpacing;
-    });
+    const getModeWidth = (id: string, mode: ButtonMode) => {
+      const preset = modeWidths[id as keyof typeof modeWidths] || modeWidths.default;
+      return preset[mode];
+    };
+
+    const computeTotalWidth = (modes: ButtonMode[]) => {
+      return modes.reduce((sum, mode, idx) => {
+        const btn = buttons[idx];
+        return sum + getModeWidth(btn.id, mode);
+      }, 0);
+    };
+
+    const modes: ButtonMode[] = buttons.map((btn) => btn.initialMode);
+
+    const degradeSteps: { indices: number[]; from: ButtonMode; to: ButtonMode }[] = [
+      { indices: [1, 2, 3], from: 'full', to: 'short' },
+      { indices: [4], from: 'full', to: 'short' },
+      { indices: [0], from: 'full', to: 'short' },
+      { indices: [1, 2, 3], from: 'short', to: 'icon' },
+      { indices: [4], from: 'short', to: 'icon' },
+      { indices: [0], from: 'short', to: 'icon' }
+    ];
+
+    let totalWidth = computeTotalWidth(modes);
+    const availableForButtons = Math.max(60, availableWidth - totalSpacing);
+
+    let stepIndex = 0;
+    while (totalWidth > availableForButtons && stepIndex < degradeSteps.length) {
+      const step = degradeSteps[stepIndex];
+      let changed = false;
+      for (const index of step.indices) {
+        if (modes[index] === step.from) {
+          modes[index] = step.to;
+          changed = true;
+        }
+      }
+      if (changed) {
+        totalWidth = computeTotalWidth(modes);
+      } else {
+        stepIndex++;
+      }
+    }
+
+    if (totalWidth > availableForButtons) {
+      const scale = availableForButtons / totalWidth;
+      const minWidths = buttons.map((btn) => getModeWidth(btn.id, 'icon'));
+      totalWidth = 0;
+      const scaledWidths = buttons.map((btn, idx) => {
+        const rawWidth = getModeWidth(btn.id, modes[idx]) * scale;
+        const clamped = Math.max(minWidths[idx], rawWidth);
+        totalWidth += clamped;
+        return clamped;
+      });
+      const over = totalWidth - availableForButtons;
+      if (over > 0.1) {
+        let remainingOver = over;
+        for (let i = scaledWidths.length - 1; i >= 0 && remainingOver > 0.1; i--) {
+          const minWidth = minWidths[i];
+          const reducible = scaledWidths[i] - minWidth;
+          if (reducible > 0) {
+            const delta = Math.min(reducible, remainingOver);
+            scaledWidths[i] -= delta;
+            remainingOver -= delta;
+          }
+        }
+      }
+
+      buttons.forEach((btn, idx) => {
+        const btnWidth = scaledWidths[idx];
+        const mode = modes[idx];
+        let label: string;
+        if (mode === 'icon') {
+          label = btn.icon;
+        } else if (mode === 'short') {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.shortText}` : btn.shortText;
+        } else {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.text}` : btn.text;
+        }
+        drawButton(posX, btnWidth, btn.style, label, mode);
+        this.hitAreas[btn.id].bounds = [posX, 0, btnWidth, height];
+        posX += btnWidth + buttonSpacing;
+      });
+    } else {
+      buttons.forEach((btn, idx) => {
+        const mode = modes[idx];
+        const btnWidth = getModeWidth(btn.id, mode);
+        let label: string;
+        if (mode === 'icon') {
+          label = btn.icon;
+        } else if (mode === 'short') {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.shortText}` : btn.shortText;
+        } else {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.text}` : btn.text;
+        }
+        drawButton(posX, btnWidth, btn.style, label, mode);
+        this.hitAreas[btn.id].bounds = [posX, 0, btnWidth, height];
+        posX += btnWidth + buttonSpacing;
+      });
+    }
 
     ctx.restore();
   }

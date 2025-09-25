@@ -718,6 +718,9 @@ _TagSetService.STORAGE_KEY = "superlora_tagset_v1";
 _TagSetService.DEFAULT_TAGS = ["General", "Character", "Style", "Quality", "Effect"];
 let TagSetService = _TagSetService;
 class OverlayService {
+  constructor() {
+    this.stylesInjected = false;
+  }
   static getInstance() {
     if (!OverlayService.instance) {
       OverlayService.instance = new OverlayService();
@@ -725,6 +728,7 @@ class OverlayService {
     return OverlayService.instance;
   }
   showSearchOverlay(options) {
+    this.ensureOverlayStyles();
     const baseFolderKey = options.baseFolderName || "files";
     const restoredState = this.restoreOverlayState(baseFolderKey);
     this.removeExistingOverlays();
@@ -790,9 +794,10 @@ class OverlayService {
       font-size: 12px;
     `;
     const multiLabel = document.createElement("label");
-    multiLabel.style.cssText = "display:flex;align-items:center;gap:6px;cursor:pointer;";
+    multiLabel.className = "nd-overlay-multi-toggle";
     const multiToggle = document.createElement("input");
     multiToggle.type = "checkbox";
+    multiToggle.className = "nd-overlay-multi-toggle-checkbox";
     multiToggle.addEventListener("change", () => {
       multiMode = !!multiToggle.checked;
       render(search.value);
@@ -800,13 +805,15 @@ class OverlayService {
     });
     const multiText = document.createElement("span");
     multiText.textContent = "Multi-select";
+    multiText.className = "nd-overlay-multi-toggle-label";
     multiLabel.appendChild(multiToggle);
     multiLabel.appendChild(multiText);
     controls.appendChild(multiLabel);
     const chipWrap = document.createElement("div");
-    chipWrap.style.cssText = "display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;";
+    chipWrap.className = "nd-overlay-chips-container";
     const subChipWrap = document.createElement("div");
-    subChipWrap.style.cssText = "display: none; flex-wrap: wrap; gap: 6px; padding: 0 12px 6px 12px;";
+    subChipWrap.className = "nd-overlay-subchips-container";
+    subChipWrap.style.display = "none";
     let folderFeatureEnabled = false;
     const activeFolders = new Set(restoredState.activeFolders);
     const activeSubfolders = new Set(restoredState.activeSubfolders);
@@ -836,32 +843,49 @@ class OverlayService {
     });
     const renderChips = (folderCounts) => {
       chipWrap.innerHTML = "";
-      const allFolderNames = Object.keys(folderCounts);
-      allFolderNames.sort((a, b) => {
+      const header2 = document.createElement("div");
+      header2.className = "nd-overlay-chip-header";
+      header2.textContent = "Folders";
+      chipWrap.appendChild(header2);
+      const chipList = document.createElement("div");
+      chipList.className = "nd-overlay-chip-list";
+      chipWrap.appendChild(chipList);
+      const allFolderNames = Object.keys(folderCounts).sort((a, b) => {
         if (a === ROOT_KEY) return -1;
         if (b === ROOT_KEY) return 1;
         return a.localeCompare(b);
       });
+      const baseFolderName = options.baseFolderName || "files";
       allFolderNames.forEach((name) => {
         const chip = document.createElement("button");
         chip.type = "button";
+        chip.className = "nd-overlay-chip";
         const isActive = activeFolders.has(name);
-        const baseFolderName = options.baseFolderName || "files";
-        const label = name === ROOT_KEY ? `${baseFolderName} - root` : name;
-        const count = folderCounts[name] ?? 0;
-        chip.textContent = `${label} (${count})`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
-          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
-        `;
+        if (isActive) chip.classList.add("is-active");
+        const icon = document.createElement("span");
+        icon.className = "nd-overlay-chip-icon";
+        icon.textContent = name === ROOT_KEY ? "🏠" : "📁";
+        const label = document.createElement("span");
+        label.className = "nd-overlay-chip-label";
+        label.textContent = name === ROOT_KEY ? `${baseFolderName} (root)` : name;
+        const count = document.createElement("span");
+        count.className = "nd-overlay-chip-count";
+        count.textContent = String(folderCounts[name] ?? 0);
+        chip.appendChild(icon);
+        chip.appendChild(label);
+        chip.appendChild(count);
+        chip.title = name === ROOT_KEY ? `${baseFolderName} root` : name;
         chip.addEventListener("click", () => {
-          if (activeFolders.has(name)) activeFolders.delete(name);
-          else activeFolders.add(name);
+          if (activeFolders.has(name)) {
+            activeFolders.delete(name);
+          } else {
+            activeFolders.add(name);
+          }
           this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
           render(search.value);
           renderSubChips();
         });
-        chipWrap.appendChild(chip);
+        chipList.appendChild(chip);
       });
     };
     const renderSubChips = () => {
@@ -889,34 +913,48 @@ class OverlayService {
         if (!subToTops[sub]) subToTops[sub] = /* @__PURE__ */ new Set();
         subToTops[sub].add(top);
       });
+      const header2 = document.createElement("div");
+      header2.className = "nd-overlay-chip-header";
+      header2.textContent = activeFolders.size === 1 ? "Subfolders" : "Subfolders (selected)";
+      subChipWrap.appendChild(header2);
+      const chipList = document.createElement("div");
+      chipList.className = "nd-overlay-chip-list";
+      subChipWrap.appendChild(chipList);
       Object.keys(subCountsByKey).sort().forEach((key) => {
         const [top, sub] = key.split("/");
         const isRootSub = sub === ROOT_KEY;
-        let label;
-        if (isRootSub) {
-          label = `${top} - root`;
-        } else {
-          const duplicate = subToTops[sub]?.size && subToTops[sub].size > 1;
-          label = duplicate ? `${sub} (${top})` : sub;
-        }
-        const count = subCountsByKey[key] ?? 0;
+        const duplicate = subToTops[sub]?.size && subToTops[sub].size > 1;
+        const labelText = isRootSub ? `${top} (root)` : duplicate ? `${top} / ${sub}` : sub;
+        const countVal = subCountsByKey[key] ?? 0;
         const chip = document.createElement("button");
         chip.type = "button";
+        chip.className = "nd-overlay-chip nd-overlay-chip--sub";
         const isActive = activeSubfolders.has(key);
-        chip.textContent = `${label} (${count})`;
-        chip.title = `${top}/${sub}`;
-        chip.style.cssText = `
-          padding: 6px 10px; border-radius: 6px; background: ${isActive ? "#333" : "#252525"};
-          color: #fff; border: ${isActive ? "2px solid #66aaff" : "1px solid #3a3a3a"}; cursor: pointer;
-        `;
+        if (isActive) chip.classList.add("is-active");
+        const icon = document.createElement("span");
+        icon.className = "nd-overlay-chip-icon";
+        icon.textContent = isRootSub ? "🗂️" : "↳";
+        const label = document.createElement("span");
+        label.className = "nd-overlay-chip-label";
+        label.textContent = labelText;
+        const count = document.createElement("span");
+        count.className = "nd-overlay-chip-count";
+        count.textContent = String(countVal);
+        chip.appendChild(icon);
+        chip.appendChild(label);
+        chip.appendChild(count);
+        chip.title = `${top}/${isRootSub ? "(root)" : sub}`;
         chip.addEventListener("click", () => {
-          if (activeSubfolders.has(key)) activeSubfolders.delete(key);
-          else activeSubfolders.add(key);
+          if (activeSubfolders.has(key)) {
+            activeSubfolders.delete(key);
+          } else {
+            activeSubfolders.add(key);
+          }
           this.persistOverlayState(baseFolderKey, activeFolders, activeSubfolders);
           render(search.value);
           renderSubChips();
         });
-        subChipWrap.appendChild(chip);
+        chipList.appendChild(chip);
       });
     };
     const render = (term) => {
@@ -967,19 +1005,54 @@ class OverlayService {
         row.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 0;";
         const leftBtn = document.createElement("button");
         leftBtn.type = "button";
-        const isSelected = selectedIds.has(item.id);
-        leftBtn.textContent = (multiMode ? isSelected ? "☑ " : "☐ " : "") + item.label + (item.disabled ? "  (added)" : "");
+        leftBtn.className = "nd-overlay-item-button";
         leftBtn.disabled = !!item.disabled;
-        leftBtn.style.cssText = `
-          flex: 1;
-          text-align: left;
-          padding: 10px 12px;
-          background: ${item.disabled ? "#2a2a2a" : multiMode && isSelected ? "#263238" : "#252525"};
-          color: ${item.disabled ? "#888" : "#fff"};
-          border: 1px solid #3a3a3a;
-          border-radius: 6px;
-          cursor: ${item.disabled ? "not-allowed" : "pointer"};
-        `;
+        const rawParts = item.id.split(/[\\/]/);
+        const parts = rawParts.filter(Boolean);
+        const folderPath = parts.slice(0, -1);
+        const lastSegment = parts[parts.length - 1] || item.label;
+        const pathDisplay = folderPath.length ? folderPath.join(" / ") : "(root)";
+        const isFolder = !/\.[^./\\]{2,}$/i.test(lastSegment);
+        const iconGlyph = isFolder ? "📁" : "📄";
+        leftBtn.title = item.id;
+        const checkboxSpan = document.createElement("span");
+        checkboxSpan.className = "nd-overlay-item-checkbox";
+        checkboxSpan.dataset.state = "hidden";
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "nd-overlay-item-icon";
+        iconSpan.textContent = iconGlyph;
+        iconSpan.setAttribute("aria-hidden", "true");
+        const textWrap = document.createElement("div");
+        textWrap.className = "nd-overlay-item-text";
+        const primaryLine = document.createElement("div");
+        primaryLine.className = "nd-overlay-item-title";
+        primaryLine.textContent = item.label;
+        if (item.disabled) {
+          const badge = document.createElement("span");
+          badge.className = "nd-overlay-item-badge";
+          badge.textContent = "added";
+          primaryLine.appendChild(badge);
+        }
+        const secondaryLine = document.createElement("div");
+        secondaryLine.className = "nd-overlay-item-path";
+        secondaryLine.textContent = pathDisplay;
+        secondaryLine.style.display = folderPath.length ? "block" : "none";
+        textWrap.appendChild(primaryLine);
+        textWrap.appendChild(secondaryLine);
+        leftBtn.appendChild(checkboxSpan);
+        leftBtn.appendChild(iconSpan);
+        leftBtn.appendChild(textWrap);
+        const applyState = () => {
+          const isSelected = selectedIds.has(item.id);
+          if (!multiMode) {
+            checkboxSpan.dataset.state = "hidden";
+          } else {
+            checkboxSpan.dataset.state = isSelected ? "checked" : "unchecked";
+          }
+          leftBtn.classList.toggle("is-disabled", !!item.disabled);
+          leftBtn.classList.toggle("is-selected", multiMode && isSelected);
+        };
+        applyState();
         leftBtn.addEventListener("click", () => {
           if (item.disabled) return;
           if (!multiMode) {
@@ -989,9 +1062,7 @@ class OverlayService {
           }
           if (selectedIds.has(item.id)) selectedIds.delete(item.id);
           else selectedIds.add(item.id);
-          const nowSelected = selectedIds.has(item.id);
-          leftBtn.textContent = (multiMode ? nowSelected ? "☑ " : "☐ " : "") + item.label + (item.disabled ? "  (added)" : "");
-          leftBtn.style.background = nowSelected ? "#263238" : "#252525";
+          applyState();
           renderFooter();
         });
         row.appendChild(leftBtn);
@@ -1156,6 +1227,226 @@ class OverlayService {
         }
       }, 300);
     }, timeout);
+  }
+  ensureOverlayStyles() {
+    if (this.stylesInjected) return;
+    try {
+      if (typeof document === "undefined") return;
+      const existing = document.querySelector('style[data-super-lora-overlay-style="1"]');
+      if (existing) {
+        this.stylesInjected = true;
+        return;
+      }
+      const style = document.createElement("style");
+      style.setAttribute("data-super-lora-overlay-style", "1");
+      style.textContent = `
+        [data-super-lora-overlay="1"] .nd-overlay-item-button {
+          position: relative;
+          width: 100%;
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 8px 10px;
+          background: #252525;
+          border: 1px solid #3a3a3a;
+          border-radius: 6px;
+          color: #fff;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button:hover:not(.is-disabled) {
+          background: #2c2c2c;
+          border-color: #4a4a4a;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button.is-disabled {
+          background: #2a2a2a;
+          color: #888;
+          cursor: not-allowed;
+          border-color: #343434;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-button.is-selected {
+          background: #263238;
+          border-color: #4a90e2;
+          box-shadow: inset 0 0 0 1px rgba(74, 144, 226, 0.35);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox {
+          width: 16px;
+          height: 16px;
+          min-width: 16px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #4a4a4a;
+          border-radius: 4px;
+          background: #1d1d1d;
+          color: #8ab4f8;
+          font-size: 12px;
+          line-height: 1;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="hidden"] {
+          opacity: 0;
+          visibility: hidden;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="unchecked"]::after {
+          content: '';
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="checked"] {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.18);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox[data-state="checked"]::after {
+          content: '✔';
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-checkbox::after {
+          font-size: 10px;
+          color: #8ab4f8;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-icon {
+          font-size: 16px;
+          line-height: 1.5;
+          opacity: 0.85;
+          min-width: 18px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-text {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          overflow: hidden;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-title {
+          font-size: 14px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-path {
+          font-size: 12px;
+          color: #9aa4b4;
+          opacity: 0.85;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-item-badge {
+          font-size: 11px;
+          color: #9aa4b4;
+          border: 1px solid #4a4f55;
+          border-radius: 999px;
+          padding: 1px 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chips-container,
+        [data-super-lora-overlay="1"] .nd-overlay-subchips-container {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 0 12px 6px 12px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-header {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: #9aa4b4;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid #3a3a3a;
+          background: #252525;
+          color: #fff;
+          cursor: pointer;
+          font-size: 12px;
+          transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip.is-active {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.18);
+          box-shadow: inset 0 0 0 1px rgba(74, 144, 226, 0.35);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-icon {
+          font-size: 14px;
+          opacity: 0.85;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-label {
+          font-weight: 500;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip-count {
+          font-size: 11px;
+          background: rgba(255, 255, 255, 0.08);
+          padding: 0 6px;
+          border-radius: 999px;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip--sub {
+          font-size: 11px;
+          padding: 5px 9px;
+          background: #1f1f1f;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-chip--sub.is-active {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: #66aaff;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 4px 8px;
+          border-radius: 999px;
+          border: 1px solid #3a3a3a;
+          background: #1f1f1f;
+          color: #fff;
+          font-size: 12px;
+          cursor: pointer;
+          user-select: none;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 4px;
+          border: 1px solid #4a4a4a;
+          background: #111;
+          position: relative;
+          cursor: pointer;
+          transition: border-color 0.15s ease, background 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox:checked {
+          border-color: #4a90e2;
+          background: rgba(74, 144, 226, 0.2);
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-checkbox:checked::after {
+          content: '✔';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -55%);
+          font-size: 10px;
+          color: #8ab4f8;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-label {
+          font-weight: 500;
+          letter-spacing: 0.01em;
+        }
+      `;
+      document.head.appendChild(style);
+      this.stylesInjected = true;
+    } catch {
+    }
   }
   removeExistingOverlays() {
     try {
@@ -1674,13 +1965,22 @@ class SuperLoraWidget extends SuperLoraBaseWidget {
     const margin = 8;
     const rowHeight = 28;
     ctx.save();
+    const innerWidth = Math.max(0, w - margin * 2);
+    const clampedHeight = Math.max(0, height);
+    ctx.beginPath();
+    ctx.rect(margin, posY, innerWidth, clampedHeight);
+    ctx.clip();
+    const bodyHeight = Math.max(4, height - 4);
+    const bodyY = posY + (height >= bodyHeight ? Math.floor((height - bodyHeight) / 2) : 0);
+    const cornerRadius = Math.min(6, bodyHeight / 2);
     ctx.fillStyle = "#2a2a2a";
     ctx.beginPath();
-    ctx.roundRect(margin, posY + 2, w - margin * 2, height - 4, 6);
+    ctx.roundRect(margin, bodyY, innerWidth, bodyHeight, cornerRadius || 0);
     ctx.fill();
     ctx.strokeStyle = "#3a3a3a";
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.clip();
     if (!this.value.enabled) {
       ctx.fillStyle = "rgba(0,0,0,0.4)";
       ctx.fill();
@@ -2183,11 +2483,17 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
   }
   draw(ctx, node, w, posY, height) {
     const margin = 8;
-    const buttonHeight = 22;
-    const buttonSpacing = 6;
+    const buttonHeight = 24;
+    const buttonSpacing = 8;
     let posX = margin;
     ctx.save();
-    ctx.fillStyle = "#2a2a2a";
+    ctx.beginPath();
+    ctx.rect(0, posY, w, height);
+    ctx.clip();
+    const headerGradient = ctx.createLinearGradient(0, posY, 0, posY + height);
+    headerGradient.addColorStop(0, "#2f2f2f");
+    headerGradient.addColorStop(1, "#232323");
+    ctx.fillStyle = headerGradient;
     ctx.fillRect(0, posY, w, height);
     ctx.strokeStyle = "#3a3a3a";
     ctx.lineWidth = 1;
@@ -2198,42 +2504,172 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     ctx.lineTo(w, posY + height - 0.5);
     ctx.stroke();
     const midY = posY + height / 2;
-    ctx.font = "11px 'Segoe UI', Arial, sans-serif";
+    ctx.font = "500 11px 'Segoe UI', Arial, sans-serif";
     ctx.textBaseline = "middle";
-    const drawButton = (x, width, _color, text) => {
-      ctx.fillStyle = "#2a2a2a";
+    const buttonStyles = {
+      primary: {
+        gradient: ["#4f81ff", "#2f60f0"],
+        border: "#1f3fbf",
+        text: "#f7f9ff",
+        innerStroke: "rgba(255, 255, 255, 0.18)",
+        shadow: { color: "rgba(56, 109, 255, 0.45)", blur: 10, offsetY: 1 },
+        font: "600 11px 'Segoe UI', Arial, sans-serif",
+        iconFont: "700 14px 'Segoe UI', Arial, sans-serif"
+      },
+      secondary: {
+        gradient: ["#3a3a3a", "#2c2c2c"],
+        border: "#4a4a4a",
+        text: "#dedede",
+        innerStroke: "rgba(255, 255, 255, 0.08)",
+        font: "500 11px 'Segoe UI', Arial, sans-serif",
+        iconFont: "600 13px 'Segoe UI', Arial, sans-serif"
+      }
+    };
+    const modeWidths = {
+      addLora: { full: 132, short: 92, icon: 44 },
+      default: { full: 100, short: 64, icon: 36 }
+    };
+    const drawButton = (x, width, style, label, mode) => {
+      const buttonY = posY + (height - buttonHeight) / 2;
+      ctx.save();
+      const gradient = ctx.createLinearGradient(x, buttonY, x, buttonY + buttonHeight);
+      gradient.addColorStop(0, style.gradient[0]);
+      gradient.addColorStop(1, style.gradient[1]);
       ctx.beginPath();
-      ctx.roundRect(x, posY + (height - buttonHeight) / 2, width, buttonHeight, 3);
+      if (style.shadow) {
+        ctx.shadowColor = style.shadow.color;
+        ctx.shadowBlur = style.shadow.blur;
+        ctx.shadowOffsetY = style.shadow.offsetY ?? 0;
+      }
+      ctx.fillStyle = gradient;
+      ctx.roundRect(x, buttonY, width, buttonHeight, 5);
       ctx.fill();
-      ctx.strokeStyle = "#3f3f3f";
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
       ctx.lineWidth = 1;
+      ctx.strokeStyle = style.border;
       ctx.stroke();
-      ctx.fillStyle = "#e0e0e0";
+      if (style.innerStroke) {
+        ctx.beginPath();
+        const inset = 0.6;
+        ctx.roundRect(x + inset, buttonY + inset, width - inset * 2, buttonHeight - inset * 2, 4);
+        ctx.strokeStyle = style.innerStroke;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.fillStyle = style.text;
       ctx.textAlign = "center";
-      const textX = x + width / 2;
-      ctx.fillText(text, textX, midY);
+      const font = mode === "icon" ? style.iconFont ?? "600 13px 'Segoe UI', Arial, sans-serif" : style.font ?? "500 11px 'Segoe UI', Arial, sans-serif";
+      ctx.font = font;
+      const verticalOffset = mode === "icon" ? -0.5 : 0;
+      ctx.fillText(label, x + width / 2, midY + verticalOffset);
+      ctx.restore();
     };
     const availableWidth = w - margin * 2;
     const allEnabled = this.getAllLorasState(node);
     const toggleText = allEnabled ? "Disable All" : "Enable All";
     const toggleShort = allEnabled ? "Disable" : "Enable";
     const buttons = [
-      { id: "addLora", color: "#2a2a2a", text: "Add LoRA", shortText: "Add", icon: "➕", priority: 2 },
-      { id: "toggleAll", color: "#2a2a2a", text: toggleText, shortText: toggleShort, icon: "⏯️", priority: 1 },
-      { id: "saveTemplate", color: "#2a2a2a", text: "Save Set", shortText: "Save", icon: "💾", priority: 3 },
-      { id: "loadTemplate", color: "#2a2a2a", text: "Load Set", shortText: "Load", icon: "📂", priority: 4 },
-      { id: "settings", color: "#2a2a2a", text: "Settings", shortText: "Set", icon: "⚙️", priority: 5 }
+      { id: "addLora", text: "Add LoRA", shortText: "Add", icon: "➕", style: buttonStyles.primary, initialMode: "full", combineIcon: true },
+      { id: "toggleAll", text: toggleText, shortText: toggleShort, icon: "⏯️", style: buttonStyles.secondary, initialMode: "full" },
+      { id: "saveTemplate", text: "Save Set", shortText: "Save", icon: "💾", style: buttonStyles.secondary, initialMode: "full" },
+      { id: "loadTemplate", text: "Load Set", shortText: "Load", icon: "📂", style: buttonStyles.secondary, initialMode: "full" },
+      { id: "settings", text: "Settings", shortText: "Set", icon: "⚙️", style: buttonStyles.secondary, initialMode: "full" }
     ];
     const totalSpacing = buttonSpacing * (buttons.length - 1);
-    const buttonWidth = Math.max(40, (availableWidth - totalSpacing) / buttons.length);
-    const useShortText = buttonWidth < 60;
-    const useIconOnly = buttonWidth < 45;
-    buttons.forEach((btn) => {
-      const displayText = useIconOnly ? btn.icon : useShortText ? btn.shortText : btn.text;
-      drawButton(posX, buttonWidth, btn.color, displayText);
-      this.hitAreas[btn.id].bounds = [posX, 0, buttonWidth, height];
-      posX += buttonWidth + buttonSpacing;
-    });
+    const getModeWidth = (id, mode) => {
+      const preset = modeWidths[id] || modeWidths.default;
+      return preset[mode];
+    };
+    const computeTotalWidth = (modes2) => {
+      return modes2.reduce((sum, mode, idx) => {
+        const btn = buttons[idx];
+        return sum + getModeWidth(btn.id, mode);
+      }, 0);
+    };
+    const modes = buttons.map((btn) => btn.initialMode);
+    const degradeSteps = [
+      { indices: [1, 2, 3], from: "full", to: "short" },
+      { indices: [4], from: "full", to: "short" },
+      { indices: [0], from: "full", to: "short" },
+      { indices: [1, 2, 3], from: "short", to: "icon" },
+      { indices: [4], from: "short", to: "icon" },
+      { indices: [0], from: "short", to: "icon" }
+    ];
+    let totalWidth = computeTotalWidth(modes);
+    const availableForButtons = Math.max(60, availableWidth - totalSpacing);
+    let stepIndex = 0;
+    while (totalWidth > availableForButtons && stepIndex < degradeSteps.length) {
+      const step = degradeSteps[stepIndex];
+      let changed = false;
+      for (const index of step.indices) {
+        if (modes[index] === step.from) {
+          modes[index] = step.to;
+          changed = true;
+        }
+      }
+      if (changed) {
+        totalWidth = computeTotalWidth(modes);
+      } else {
+        stepIndex++;
+      }
+    }
+    if (totalWidth > availableForButtons) {
+      const scale = availableForButtons / totalWidth;
+      const minWidths = buttons.map((btn) => getModeWidth(btn.id, "icon"));
+      totalWidth = 0;
+      const scaledWidths = buttons.map((btn, idx) => {
+        const rawWidth = getModeWidth(btn.id, modes[idx]) * scale;
+        const clamped = Math.max(minWidths[idx], rawWidth);
+        totalWidth += clamped;
+        return clamped;
+      });
+      const over = totalWidth - availableForButtons;
+      if (over > 0.1) {
+        let remainingOver = over;
+        for (let i = scaledWidths.length - 1; i >= 0 && remainingOver > 0.1; i--) {
+          const minWidth = minWidths[i];
+          const reducible = scaledWidths[i] - minWidth;
+          if (reducible > 0) {
+            const delta = Math.min(reducible, remainingOver);
+            scaledWidths[i] -= delta;
+            remainingOver -= delta;
+          }
+        }
+      }
+      buttons.forEach((btn, idx) => {
+        const btnWidth = scaledWidths[idx];
+        const mode = modes[idx];
+        let label;
+        if (mode === "icon") {
+          label = btn.icon;
+        } else if (mode === "short") {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.shortText}` : btn.shortText;
+        } else {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.text}` : btn.text;
+        }
+        drawButton(posX, btnWidth, btn.style, label, mode);
+        this.hitAreas[btn.id].bounds = [posX, 0, btnWidth, height];
+        posX += btnWidth + buttonSpacing;
+      });
+    } else {
+      buttons.forEach((btn, idx) => {
+        const mode = modes[idx];
+        const btnWidth = getModeWidth(btn.id, mode);
+        let label;
+        if (mode === "icon") {
+          label = btn.icon;
+        } else if (mode === "short") {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.shortText}` : btn.shortText;
+        } else {
+          label = btn.combineIcon && btn.icon ? `${btn.icon} ${btn.text}` : btn.text;
+        }
+        drawButton(posX, btnWidth, btn.style, label, mode);
+        this.hitAreas[btn.id].bounds = [posX, 0, btnWidth, height];
+        posX += btnWidth + buttonSpacing;
+      });
+    }
     ctx.restore();
   }
   getAllLorasState(node) {
@@ -2313,6 +2749,27 @@ const _SuperLoraNode = class _SuperLoraNode {
       }
       return originalOnMouseUp ? originalOnMouseUp.call(this, event, pos) : false;
     };
+    const originalOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function(size, ...rest) {
+      const minHeight = _SuperLoraNode.computeContentHeight(this);
+      if (Array.isArray(size)) {
+        size[1] = Math.max(size[1], minHeight);
+      } else if (size && typeof size === "object") {
+        if (typeof size[1] === "number") {
+          size[1] = Math.max(size[1], minHeight);
+        }
+        if (typeof size.y === "number") {
+          size.y = Math.max(size.y, minHeight);
+        }
+      }
+      if (this.size) {
+        this.size[1] = Math.max(this.size[1], minHeight);
+      }
+      if (originalOnResize) {
+        return originalOnResize.apply(this, [size, ...rest]);
+      }
+      return void 0;
+    };
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
       const data = originalSerialize.apply(this, arguments);
@@ -2364,15 +2821,35 @@ const _SuperLoraNode = class _SuperLoraNode {
           const maybe = originalGetExtraMenuOptions.call(this, _canvas, options);
           if (Array.isArray(maybe)) options = maybe;
         }
-        options.push(null);
-        options.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
-        options.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
+        const hasAddLoRA = options.some((opt) => opt && opt.content === "🏷️ Add LoRA");
+        const hasSettings = options.some((opt) => opt && opt.content === "⚙️ Settings");
+        if (!hasAddLoRA || !hasSettings) {
+          if (options.length === 0 || options[options.length - 1] !== null) {
+            options.push(null);
+          }
+          if (!hasAddLoRA) {
+            options.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
+          }
+          if (!hasSettings) {
+            options.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
+          }
+        }
         return options;
       } catch {
         const safe = optionsArr && Array.isArray(optionsArr) ? optionsArr : [];
-        safe.push(null);
-        safe.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
-        safe.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
+        const ensureSeparator = () => {
+          if (safe.length === 0 || safe[safe.length - 1] !== null) {
+            safe.push(null);
+          }
+        };
+        if (!safe.some((opt) => opt && opt.content === "🏷️ Add LoRA")) {
+          ensureSeparator();
+          safe.push({ content: "🏷️ Add LoRA", callback: (_event) => _SuperLoraNode.showLoraSelector(this, void 0, void 0) });
+        }
+        if (!safe.some((opt) => opt && opt.content === "⚙️ Settings")) {
+          ensureSeparator();
+          safe.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
+        }
         return safe;
       }
     };
@@ -2392,16 +2869,16 @@ const _SuperLoraNode = class _SuperLoraNode {
     node.properties.autoFetchTriggerWords = node.properties.autoFetchTriggerWords !== false;
     node.customWidgets = node.customWidgets || [];
     node.customWidgets.push(new SuperLoraHeaderWidget());
-    node.size = [node.size[0], Math.max(node.size[1], 100)];
+    const contentHeight = this.computeContentHeight(node);
+    node.size = [node.size[0], Math.max(node.size[1], contentHeight)];
     console.log("Super LoRA Loader: Advanced node setup complete");
   }
-  /**
-   * Calculate required node size based on widgets
-   */
-  static calculateNodeSize(node) {
-    if (!node.customWidgets) return;
+  static computeContentHeight(node) {
     const marginDefault = _SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET;
+    if (!node?.customWidgets) {
+      return Math.max(currentY, 100);
+    }
     const renderable = [];
     for (const widget of node.customWidgets) {
       const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
@@ -2421,7 +2898,13 @@ const _SuperLoraNode = class _SuperLoraNode {
       }
       currentY += height + marginAfter;
     });
-    const newHeight = Math.max(currentY, 100);
+    return Math.max(currentY, 100);
+  }
+  /**
+   * Calculate required node size based on widgets
+   */
+  static calculateNodeSize(node) {
+    const newHeight = this.computeContentHeight(node);
     if (node.size[1] !== newHeight) {
       node.size[1] = newHeight;
     }
@@ -3301,15 +3784,19 @@ const _FilePickerService = class _FilePickerService {
         throw new Error(`Failed to fetch files: ${response.statusText}`);
       }
       const data = await response.json();
-      const files = data.files?.map((file) => ({
-        id: file.path,
-        label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft)$/i, ""),
-        path: file.path,
-        filename: file.name,
-        extension: file.extension || "",
-        size: file.size,
-        modified: file.modified
-      })) || [];
+      const files = data.files?.map((file) => {
+        const relativePath = file.relative_path || file.path;
+        return {
+          id: relativePath,
+          label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft|gguf)$/i, ""),
+          path: relativePath,
+          fullPath: file.path,
+          filename: file.name,
+          extension: file.extension || "",
+          size: file.size,
+          modified: file.modified
+        };
+      }) || [];
       this.setCachedFiles(cacheKey, files);
       return files;
     } catch (error) {
@@ -3473,6 +3960,44 @@ const GGUF_CLIP_WIDGET_MAP = {
   QuadrupleCLIPLoaderGGUF: ["clip_name1", "clip_name2", "clip_name3", "clip_name4"]
 };
 const _NodeEnhancerExtension = class _NodeEnhancerExtension {
+  static debugLog(...args) {
+    if (this.DEBUG) {
+      console.debug("[NodeEnhancer]", ...args);
+    }
+  }
+  static normalizeValueForWidget(widget, value) {
+    if (!widget || typeof value !== "string") {
+      return value;
+    }
+    const sample = (() => {
+      const opts = widget.options?.values;
+      if (Array.isArray(opts)) {
+        return opts.find((entry) => typeof entry === "string");
+      }
+      if (opts && typeof opts === "object") {
+        return Object.keys(opts).find((key) => typeof key === "string");
+      }
+      return void 0;
+    })();
+    if (typeof sample === "string") {
+      const prefersBackslash = sample.includes("\\") && !sample.includes("/");
+      const prefersSlash = sample.includes("/") && !sample.includes("\\");
+      if (prefersBackslash) {
+        return value.replace(/\//g, "\\");
+      }
+      if (prefersSlash) {
+        return value.replace(/\\/g, "/");
+      }
+    }
+    return value;
+  }
+  static isGloballyEnabled() {
+    try {
+      return app$1?.ui?.settings?.getSettingValue?.("nodeEnhancer.enableContextToggle", true) !== false;
+    } catch {
+      return true;
+    }
+  }
   static createOverlayWidget(node, targetWidget, config) {
     const overlayWidget = {
       name: `${config.widgetName}__ndOverlay`,
@@ -3604,6 +4129,39 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     const base = widget?.label || widget?.name || config.label || config.widgetName || "file";
     return `Select ${base}`;
   }
+  static ensureWidgetValueSelectable(widget, value) {
+    if (!widget || typeof value !== "string") {
+      return;
+    }
+    try {
+      const before = widget.options?.values;
+      if (!widget.options) {
+        widget.options = { values: [value] };
+        _NodeEnhancerExtension.debugLog("Initialized widget options for value", value, { widgetName: widget.name });
+        return;
+      }
+      const options = widget.options;
+      const { values } = options;
+      if (Array.isArray(values)) {
+        if (!values.includes(value)) {
+          options.values = [...values, value];
+          _NodeEnhancerExtension.debugLog("Appended value to array options", value, { widgetName: widget.name, before, after: options.values });
+        }
+        return;
+      }
+      if (values && typeof values === "object") {
+        if (!(value in values)) {
+          options.values = { ...values, [value]: value };
+          _NodeEnhancerExtension.debugLog("Added value to object options", value, { widgetName: widget.name, before, after: options.values });
+        }
+        return;
+      }
+      options.values = [value];
+      _NodeEnhancerExtension.debugLog("Reset options.values to single entry", value, { widgetName: widget.name, before });
+    } catch (error) {
+      console.warn("Node Enhancer: failed to sync widget values", error);
+    }
+  }
   static enhanceWidget(node, widget, config) {
     node.__ndEnhancedWidgets = node.__ndEnhancedWidgets || {};
     const meta = node.__ndEnhancedWidgets[config.widgetName] || { original: {} };
@@ -3614,6 +4172,7 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     if (!("computeSize" in original)) original.computeSize = widget.computeSize;
     if (!("hidden" in original)) original.hidden = widget.hidden;
     if (!("options" in original)) original.options = widget.options ? { ...widget.options } : void 0;
+    if (!("values" in original)) original.values = widget.options?.values ? [...widget.options.values] : void 0;
     if (!("serialize" in original)) original.serialize = widget.serialize;
     if (!("skipSerialize" in original)) original.skipSerialize = widget.skipSerialize;
     widget._ndPlaceholder = _NodeEnhancerExtension.buildPlaceholder(config, widget);
@@ -3687,7 +4246,12 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
           delete widget.options;
         } else {
           widget.options = { ...original.options };
+          if (original.values !== void 0) {
+            widget.options.values = [...original.values];
+          }
         }
+      } else if (widget.options && "values" in widget.options) {
+        delete widget.options.values;
       }
       if ("hidden" in original) {
         if (original.hidden === void 0) {
@@ -3712,6 +4276,7 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     if (node.__ndEnhancedWidgets && Object.keys(node.__ndEnhancedWidgets).length === 0) {
       delete node.__ndEnhancedWidgets;
     }
+    _NodeEnhancerExtension.restoreTitle(node);
   }
   /**
    * Initialize the node enhancer extension
@@ -3732,33 +4297,47 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     nodeType.prototype.onNodeCreated = function() {
       originalCreate?.apply(this, arguments);
       if (!this.__ndPowerEnabled) this.__ndPowerEnabled = false;
+      if (typeof this.__ndOriginalTitle === "undefined") {
+        this.__ndOriginalTitle = this.title || this.constructor?.title || "";
+      }
       if (this.__ndPowerEnabled) {
         configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
+        _NodeEnhancerExtension.applyTitleBadge(this);
+      } else {
+        _NodeEnhancerExtension.restoreTitle(this);
       }
     };
     const originalMenu = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(canvas, optionsArr) {
+      if (!_NodeEnhancerExtension.isGloballyEnabled()) {
+        return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
+      }
       let options = Array.isArray(optionsArr) ? optionsArr : [];
       const maybe = originalMenu?.call(this, canvas, options);
       if (Array.isArray(maybe)) options = maybe;
-      options.push(null);
-      options.push({
+      const toggleOption = {
         content: this.__ndPowerEnabled ? "➖ Disable ND Power UI" : "⚡ Enable ND Power UI",
         callback: () => {
           try {
             if (this.__ndPowerEnabled) {
               configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
               this.__ndPowerEnabled = false;
+              _NodeEnhancerExtension.restoreTitle(this);
             } else {
               configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
               this.__ndPowerEnabled = true;
+              _NodeEnhancerExtension.applyTitleBadge(this);
             }
             this.setDirtyCanvas?.(true, true);
           } catch (error) {
             console.warn("Node Enhancer: toggle failed", error);
           }
         }
-      });
+      };
+      if (options[0] !== null) {
+        options.unshift(null);
+      }
+      options.unshift(toggleOption);
       return options;
     };
     const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
@@ -3766,7 +4345,7 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       if (originalOnDrawForeground) {
         originalOnDrawForeground.call(this, ctx);
       }
-      _NodeEnhancerExtension.drawEnhancedWidgets(this, ctx);
+      _NodeEnhancerExtension.drawSelectorBadge(this, ctx);
     };
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
@@ -3809,9 +4388,11 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
             this.__ndPowerEnabled = true;
             configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
           }
+          _NodeEnhancerExtension.applyTitleBadge(this);
         } else {
           configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
           this.__ndPowerEnabled = false;
+          _NodeEnhancerExtension.restoreTitle(this);
         }
       } catch {
       }
@@ -3841,7 +4422,14 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     node.__ndPowerEnabled = true;
     node.__ndEnhancedWidgets = node.__ndEnhancedWidgets || {};
     node.__ndEnhancedWidgets[config.widgetName] = node.__ndEnhancedWidgets[config.widgetName] || { original: {} };
+    _NodeEnhancerExtension.debugLog("Enhancing widget", {
+      nodeType: node?.type,
+      widgetName: widget?.name,
+      initialValue: widget?.value,
+      options: widget?.options?.values
+    });
     this.enhanceWidget(node, widget, config);
+    this.applyTitleBadge(node);
   }
   /** Enable enhancement for a specific node instance */
   static enableForNode(node, config) {
@@ -3857,6 +4445,7 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     if (!node.__ndEnhancedWidgets) {
       node.__ndPowerEnabled = false;
     }
+    _NodeEnhancerExtension.restoreTitle(node);
   }
   static showEnhancedPicker(node, config) {
     const widget = node.widgets?.find((w) => w.name === config.widgetName);
@@ -3865,13 +4454,48 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     this.filePickerService.showFilePicker(
       config.fileType,
       (file) => {
-        try {
-          widget.value = file.id;
-        } catch {
+        let newValue;
+        if (file && typeof file.id === "string") {
+          newValue = file.id;
+        } else if (file && typeof file.path === "string") {
+          newValue = file.path;
+        } else if (file && typeof file.filename === "string") {
+          newValue = file.filename;
+        }
+        _NodeEnhancerExtension.debugLog("File picker selection", {
+          nodeType: node?.type,
+          widgetName: config.widgetName,
+          file,
+          proposedValue: newValue,
+          existingValues: widget.options?.values
+        });
+        if (typeof newValue === "string") {
+          try {
+            const normalizedValue = _NodeEnhancerExtension.normalizeValueForWidget(widget, newValue);
+            widget.value = normalizedValue;
+            _NodeEnhancerExtension.ensureWidgetValueSelectable(widget, normalizedValue);
+            _NodeEnhancerExtension.debugLog("Applied widget value", {
+              nodeType: node?.type,
+              widgetName: config.widgetName,
+              newValue: normalizedValue,
+              updatedValues: widget.options?.values
+            });
+          } catch (error) {
+            console.warn("Node Enhancer: failed to assign widget value", error);
+          }
         }
         const meta = node.__ndEnhancedWidgets?.[config.widgetName];
         if (meta?.overlay) {
-          meta.overlay.updateDisplay(widget.value, file?.path || file?.id || file?.filename || widget.value);
+          const displayValue = _NodeEnhancerExtension.formatDisplayValue(
+            file && typeof file.label === "string" && file.label || file && typeof file.path === "string" && file.path || file && typeof file.filename === "string" && file.filename || widget.value
+          );
+          meta.overlay.updateDisplay(widget.value, displayValue);
+          _NodeEnhancerExtension.debugLog("Updated overlay display", {
+            nodeType: node?.type,
+            widgetName: config.widgetName,
+            displayValue,
+            widgetValue: widget.value
+          });
         }
         node.setDirtyCanvas?.(true, true);
       },
@@ -3910,16 +4534,60 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
    */
   static drawEnhancedWidgets(node, ctx) {
     if (!node.__ndPowerEnabled) return;
-    const indicatorText = "⚡ Enhanced";
-    ctx.save();
-    ctx.font = "12px Arial";
-    ctx.fillStyle = "#4CAF50";
-    ctx.textAlign = "left";
+  }
+  static drawSelectorBadge(node, ctx) {
+    if (!node.__ndPowerEnabled) return;
     const titleHeight = node.constructor?.title_height ?? node.title_height ?? 24;
-    const padding = 4;
-    const y = Math.max(titleHeight, padding + 12);
-    ctx.fillText(indicatorText, padding, y);
+    const nodeWidth = node.size?.[0] || 140;
+    const badgeWidth = 92;
+    const badgeHeight = 16;
+    const margin = 6;
+    const radius = 6;
+    const centerX = nodeWidth - badgeWidth / 2 - margin;
+    const centerY = titleHeight / 2;
+    ctx.save();
+    ctx.translate(node.pos?.[0] ?? 0, node.pos?.[1] ?? 0);
+    if (typeof ctx.roundRect === "function") {
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(30, 136, 229, 0.15)";
+      ctx.roundRect(nodeWidth - badgeWidth - margin, (titleHeight - badgeHeight) / 2, badgeWidth, badgeHeight, radius);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(30, 136, 229, 0.45)";
+      ctx.stroke();
+    }
+    ctx.font = "11px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#64b5f6";
+    ctx.fillText("⚡ ND Selector", centerX, centerY);
     ctx.restore();
+  }
+  static applyTitleBadge(node) {
+    try {
+      if (!node.__ndPowerEnabled) {
+        _NodeEnhancerExtension.restoreTitle(node);
+        return;
+      }
+      if (typeof node.__ndOriginalTitle === "undefined") {
+        node.__ndOriginalTitle = node.title || node.constructor?.title || "";
+      }
+      const originalTitle = node.__ndOriginalTitle || "";
+      const suffix = _NodeEnhancerExtension.TITLE_SUFFIX;
+      if (!node.title?.includes(suffix)) {
+        node.title = originalTitle ? `${originalTitle} ${suffix}` : suffix;
+      }
+    } catch {
+    }
+  }
+  static restoreTitle(node) {
+    try {
+      if (typeof node.__ndOriginalTitle !== "undefined") {
+        node.title = node.__ndOriginalTitle;
+      } else if (node.title) {
+        node.title = node.title.split(_NodeEnhancerExtension.TITLE_SUFFIX).join("").trim();
+      }
+    } catch {
+    }
   }
   // Preference helpers retained for future global defaults (no-op currently)
   static loadUserPreferences() {
@@ -4002,79 +4670,81 @@ _NodeEnhancerExtension.ENHANCED_NODES = [
     nodeType: "CheckpointLoader",
     fileType: "models",
     widgetName: "ckpt_name",
-    label: "Enhanced Model Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "CheckpointLoaderSimple",
     fileType: "models",
     widgetName: "ckpt_name",
-    label: "Enhanced Model Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "VAELoader",
     fileType: "vae",
     widgetName: "vae_name",
-    label: "Enhanced VAE Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "LoraLoader",
     fileType: "loras",
     widgetName: "lora_name",
-    label: "Enhanced LoRA Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "UNETLoader",
     fileType: "diffusion_models",
     widgetName: "unet_name",
-    label: "Enhanced UNET Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "UnetLoaderGGUF",
     fileType: "gguf_unet_models",
     widgetName: "unet_name",
-    label: "Enhanced UNET GGUF Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "UnetLoaderGGUFAdvanced",
     fileType: "gguf_unet_models",
     widgetName: "unet_name",
-    label: "Enhanced UNET GGUF Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "CLIPLoader",
     fileType: "text_encoders",
     widgetName: "clip_name",
-    label: "Enhanced CLIP Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "CLIPLoaderGGUF",
     fileType: "text_encoders",
     widgetName: "clip_name",
-    label: "Enhanced CLIP GGUF Picker"
+    label: "ND Selector"
   },
   ...Object.entries(GGUF_CLIP_WIDGET_MAP).flatMap(
     ([nodeType, widgetNames]) => widgetNames.map((widgetName, index) => ({
       nodeType,
       fileType: "text_encoders",
       widgetName,
-      label: `Enhanced CLIP GGUF Picker (${index + 1})`
+      label: `ND Selector (${index + 1})`
     }))
   ),
   {
     nodeType: "ControlNetLoader",
     fileType: "controlnet",
     widgetName: "control_net_name",
-    label: "Enhanced ControlNet Picker"
+    label: "ND Selector"
   },
   {
     nodeType: "UpscaleModelLoader",
     fileType: "upscale_models",
     widgetName: "model_name",
-    label: "Enhanced Upscale Picker"
+    label: "ND Selector"
   }
 ];
 _NodeEnhancerExtension.filePickerService = FilePickerService.getInstance();
+_NodeEnhancerExtension.TITLE_SUFFIX = "⚡ ND Selector";
 _NodeEnhancerExtension.HIDDEN_WIDGET_SIZE = (_width) => [0, -4];
+_NodeEnhancerExtension.DEBUG = true;
 let NodeEnhancerExtension = _NodeEnhancerExtension;
 const EXTENSION_NAME$1 = "NodeEnhancer";
 const EXTENSION_VERSION = "1.0.0";
@@ -4094,6 +4764,12 @@ const nodeEnhancerExtension = {
       name: "Auto-enhance All Nodes",
       type: "boolean",
       defaultValue: false
+    },
+    {
+      id: "nodeEnhancer.enableContextToggle",
+      name: "Show ND Selector Toggle in Node Menu",
+      type: "boolean",
+      defaultValue: true
     }
   ],
   // Extension commands (minimal; per-node toggle lives in right-click menu)
