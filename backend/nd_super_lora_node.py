@@ -1,5 +1,5 @@
 """
-Super LoRA Loader Node - Main implementation
+ND Super LoRA Loader Node - Main implementation
 """
 
 from typing import Union, Dict, Any, Tuple, List
@@ -12,7 +12,7 @@ try:
     from nodes import LoraLoader
     COMFYUI_AVAILABLE = True
 except ImportError:
-    print("Super LoRA Loader: ComfyUI modules not available (this is normal during development)")
+    print("ND Super Nodes: ComfyUI modules not available (this is normal during development)")
     folder_paths = None
     LoraLoader = None
     COMFYUI_AVAILABLE = False
@@ -30,9 +30,9 @@ except ImportError:
     from civitai_service import CivitAiService, get_civitai_service
 
 
-class SuperLoraLoader:
+class NdSuperLoraLoader:
     """
-    Super LoRA Loader - A powerful node for loading multiple LoRAs with advanced features.
+    ND Super LoRA Loader - A powerful node for loading multiple LoRAs with advanced features.
     
     Features:
     - Multiple LoRA loading in a single node

@@ -1,5 +1,5 @@
 """
-Template management system for Super LoRA Loader
+Template management system for ND Super Nodes
 """
 
 import json
@@ -10,7 +10,7 @@ try:
     import folder_paths
     COMFYUI_AVAILABLE = True
 except ImportError:
-    print("Super LoRA Loader: ComfyUI folder_paths not available for templates")
+    print("ND Super Nodes: ComfyUI folder_paths not available for templates")
     folder_paths = None
     COMFYUI_AVAILABLE = False
 
@@ -73,11 +73,11 @@ class TemplateManager:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(template_data, f, indent=2, ensure_ascii=False)
             
-            print(f"Super LoRA Loader: Template '{name}' saved successfully")
+            print(f"ND Super Nodes: Template '{name}' saved successfully")
             return True
             
         except Exception as e:
-            print(f"Super LoRA Loader: Error saving template '{name}': {e}")
+            print(f"ND Super Nodes: Error saving template '{name}': {e}")
             return False
     
     def load_template(self, name: str) -> Optional[Dict[str, Any]]:
@@ -118,7 +118,7 @@ class TemplateManager:
             return template_data
             
         except Exception as e:
-            print(f"Super LoRA Loader: Error loading template '{name}': {e}")
+            print(f"ND Super Nodes: Error loading template '{name}': {e}")
             return None
     
     def list_templates(self) -> List[Dict[str, str]]:
@@ -147,11 +147,11 @@ class TemplateManager:
                             "created_at": data.get('created_at', '')
                         })
                     except Exception as e:
-                        print(f"Super LoRA Loader: Error reading template '{filename}': {e}")
+                        print(f"ND Super Nodes: Error reading template '{filename}': {e}")
                         continue
         
         except Exception as e:
-            print(f"Super LoRA Loader: Error listing templates: {e}")
+            print(f"ND Super Nodes: Error listing templates: {e}")
         
         return sorted(templates, key=lambda x: x['name'])
     
@@ -191,11 +191,11 @@ class TemplateManager:
                     return False
             
             os.remove(filepath)
-            print(f"Super LoRA Loader: Template '{name}' deleted successfully")
+            print(f"ND Super Nodes: Template '{name}' deleted successfully")
             return True
             
         except Exception as e:
-            print(f"Super LoRA Loader: Error deleting template '{name}': {e}")
+            print(f"ND Super Nodes: Error deleting template '{name}': {e}")
             return False
     
     def _get_timestamp(self) -> str:

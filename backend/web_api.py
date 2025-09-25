@@ -1,5 +1,5 @@
 """
-Web API endpoints for Super LoRA Loader
+Web API endpoints for ND Super Nodes
 """
 
 import json
