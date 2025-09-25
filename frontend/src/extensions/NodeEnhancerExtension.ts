@@ -100,7 +100,7 @@ export class NodeEnhancerExtension {
   ];
 
   private static filePickerService: FilePickerService = FilePickerService.getInstance();
-  private static readonly TITLE_SUFFIX = '⚡ ND Selector';
+  private static readonly INDICATOR_LABEL = '⚡ ND UI';
   private static readonly HIDDEN_WIDGET_SIZE = (_width?: number) => [0, -4] as [number, number];
   private static readonly DEBUG = true;
 
@@ -779,48 +779,50 @@ export class NodeEnhancerExtension {
     const titleHeight = node.constructor?.title_height ?? node.title_height ?? 24;
     const nodeWidth = node.size?.[0] || 140;
 
-    const badgeWidth = 92;
-    const badgeHeight = 16;
-    const margin = 6;
-    const radius = 6;
-    const centerX = nodeWidth - badgeWidth / 2 - margin;
-    const centerY = titleHeight / 2;
+    ctx.save();
+    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    const label = NodeEnhancerExtension.INDICATOR_LABEL;
+    const metrics = ctx.measureText(label);
+    const textWidth = metrics.width;
+    const textHeight = (metrics.actualBoundingBoxAscent ?? 7) + (metrics.actualBoundingBoxDescent ?? 3);
+    const horizontalPadding = 10;
+    const verticalPadding = 4;
+    const minBadgeWidth = textWidth + horizontalPadding * 2;
+    const badgeWidth = Math.max(56, Math.min(nodeWidth - 12, minBadgeWidth));
+    const badgeHeight = Math.max(16, textHeight + verticalPadding * 2);
+    const originX = Math.max(6, (nodeWidth - badgeWidth) / 2);
+    const originY = Math.max(2, (titleHeight - badgeHeight) / 2);
+    const radius = Math.min(8, badgeHeight / 2);
 
     ctx.save();
-    ctx.translate(node.pos?.[0] ?? 0, node.pos?.[1] ?? 0);
-
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = 'rgba(29, 114, 194, 0.22)';
     if (typeof ctx.roundRect === 'function') {
       ctx.beginPath();
-      ctx.fillStyle = 'rgba(30, 136, 229, 0.15)';
-      ctx.roundRect(nodeWidth - badgeWidth - margin, (titleHeight - badgeHeight) / 2, badgeWidth, badgeHeight, radius);
+      ctx.roundRect(originX, originY, badgeWidth, badgeHeight, radius);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(30, 136, 229, 0.45)';
+      ctx.strokeStyle = 'rgba(76, 176, 255, 0.55)';
       ctx.stroke();
+    } else {
+      ctx.fillRect(originX, originY, badgeWidth, badgeHeight);
+      ctx.strokeStyle = 'rgba(76, 176, 255, 0.55)';
+      ctx.strokeRect(originX, originY, badgeWidth, badgeHeight);
     }
 
-    ctx.font = '11px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#64b5f6';
-    ctx.fillText('⚡ ND Selector', centerX, centerY);
+    ctx.fillStyle = '#6ec6ff';
+    ctx.fillText(label, originX + badgeWidth / 2, originY + badgeHeight / 2 + 0.5);
+    ctx.restore();
     ctx.restore();
   }
 
   private static applyTitleBadge(node: any): void {
     try {
-      if (!node.__ndPowerEnabled) {
-        NodeEnhancerExtension.restoreTitle(node);
-        return;
-      }
-
       if (typeof node.__ndOriginalTitle === 'undefined') {
         node.__ndOriginalTitle = node.title || node.constructor?.title || '';
-      }
-
-      const originalTitle = node.__ndOriginalTitle || '';
-      const suffix = NodeEnhancerExtension.TITLE_SUFFIX;
-      if (!node.title?.includes(suffix)) {
-        node.title = originalTitle ? `${originalTitle} ${suffix}` : suffix;
+      } else {
+        node.title = node.__ndOriginalTitle;
       }
     } catch {}
   }
@@ -829,8 +831,6 @@ export class NodeEnhancerExtension {
     try {
       if (typeof node.__ndOriginalTitle !== 'undefined') {
         node.title = node.__ndOriginalTitle;
-      } else if (node.title) {
-        node.title = node.title.split(NodeEnhancerExtension.TITLE_SUFFIX).join('').trim();
       }
     } catch {}
   }

@@ -2685,30 +2685,65 @@ const app = window.app;
 const LiteGraph = window.LiteGraph;
 const _SuperLoraNode = class _SuperLoraNode {
   static async initialize() {
-    this.loraService = LoraService.getInstance();
-    this.templateService = TemplateService.getInstance();
-    this.civitaiService = CivitAiService.getInstance();
-    await Promise.all([
-      this.loraService.initialize(),
-      this.templateService.initialize()
-    ]);
-    setWidgetAPI({
-      showLoraSelector: (node, widget, e) => _SuperLoraNode.showLoraSelector(node, widget, e),
-      showTagSelector: (node, widget) => _SuperLoraNode.showTagSelector(node, widget),
-      showSettingsDialog: (node, e) => _SuperLoraNode.showSettingsDialog(node, e),
-      showLoadTemplateDialog: (node, e) => _SuperLoraNode.showLoadTemplateDialog(node, e),
-      showNameOverlay: (opts) => _SuperLoraNode.showNameOverlay(opts),
-      showInlineText: (e, initial, onCommit, place) => _SuperLoraNode.showInlineText(e, initial, onCommit, place),
-      showToast: (m, t) => _SuperLoraNode.showToast(m, t),
-      calculateNodeSize: (node) => _SuperLoraNode.calculateNodeSize(node),
-      organizeByTags: (node) => _SuperLoraNode.organizeByTags(node),
-      addLoraWidget: (node, config) => _SuperLoraNode.addLoraWidget(node, config),
-      removeLoraWidget: (node, widget) => _SuperLoraNode.removeLoraWidget(node, widget),
-      getLoraConfigs: (node) => _SuperLoraNode.getLoraConfigs(node),
-      templateService: _SuperLoraNode.templateService,
-      civitaiService: _SuperLoraNode.civitaiService,
-      syncExecutionWidgets: (node) => _SuperLoraNode.syncExecutionWidgets(node)
-    });
+    if (this.initialized) {
+      return;
+    }
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+    this.initializationPromise = (async () => {
+      this.loraService = LoraService.getInstance();
+      this.templateService = TemplateService.getInstance();
+      this.civitaiService = CivitAiService.getInstance();
+      setWidgetAPI({
+        showLoraSelector: (node, widget, e) => _SuperLoraNode.showLoraSelector(node, widget, e),
+        showTagSelector: (node, widget) => _SuperLoraNode.showTagSelector(node, widget),
+        showSettingsDialog: (node, e) => _SuperLoraNode.showSettingsDialog(node, e),
+        showLoadTemplateDialog: (node, e) => _SuperLoraNode.showLoadTemplateDialog(node, e),
+        showNameOverlay: (opts) => _SuperLoraNode.showNameOverlay(opts),
+        showInlineText: (e, initial, onCommit, place) => _SuperLoraNode.showInlineText(e, initial, onCommit, place),
+        showToast: (m, t) => _SuperLoraNode.showToast(m, t),
+        calculateNodeSize: (node) => _SuperLoraNode.calculateNodeSize(node),
+        organizeByTags: (node) => _SuperLoraNode.organizeByTags(node),
+        addLoraWidget: (node, config) => _SuperLoraNode.addLoraWidget(node, config),
+        removeLoraWidget: (node, widget) => _SuperLoraNode.removeLoraWidget(node, widget),
+        getLoraConfigs: (node) => _SuperLoraNode.getLoraConfigs(node),
+        templateService: _SuperLoraNode.templateService,
+        civitaiService: _SuperLoraNode.civitaiService,
+        syncExecutionWidgets: (node) => _SuperLoraNode.syncExecutionWidgets(node)
+      });
+      await Promise.all([
+        this.loraService.initialize(),
+        this.templateService.initialize()
+      ]);
+      this.initialized = true;
+    })();
+    try {
+      await this.initializationPromise;
+    } finally {
+      this.initializationPromise = null;
+    }
+  }
+  static isNodeBypassed(node) {
+    if (!node) {
+      return false;
+    }
+    const flags = node.flags || {};
+    if (flags.bypass || flags.bypassed || flags.skip_processing || flags.skipProcessing) {
+      return true;
+    }
+    if (node.properties && (node.properties.bypass === true || node.properties.skip === true)) {
+      return true;
+    }
+    try {
+      if (typeof LiteGraph !== "undefined" && LiteGraph && typeof LiteGraph.NEVER === "number") {
+        if (node.mode === LiteGraph.NEVER) {
+          return true;
+        }
+      }
+    } catch {
+    }
+    return false;
   }
   /**
    * Set up the node type with custom widgets
@@ -2914,27 +2949,47 @@ const _SuperLoraNode = class _SuperLoraNode {
    */
   static drawCustomWidgets(node, ctx) {
     if (!node.customWidgets) return;
+    const isBypassed = _SuperLoraNode.isNodeBypassed(node);
     const marginDefault = _SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET;
-    const renderable = [];
-    for (const widget of node.customWidgets) {
-      const size = widget.computeSize();
-      const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
-      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-      if (height === 0 || isCollapsed) continue;
-      renderable.push(widget);
-    }
-    renderable.forEach((widget, index) => {
-      const size = widget.computeSize();
-      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-      widget.draw(ctx, node, node.size[0], currentY, height);
-      let marginAfter = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
-      const isLast = index === renderable.length - 1;
-      if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
-        marginAfter = Math.max(marginDefault, 8);
+    if (!isBypassed) {
+      const renderable = [];
+      for (const widget of node.customWidgets) {
+        const size = widget.computeSize();
+        const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
+        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+        if (height === 0 || isCollapsed) continue;
+        renderable.push(widget);
       }
-      currentY += height + marginAfter;
-    });
+      renderable.forEach((widget, index) => {
+        const size = widget.computeSize();
+        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+        widget.draw(ctx, node, node.size[0], currentY, height);
+        let marginAfter = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
+        const isLast = index === renderable.length - 1;
+        if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+          marginAfter = Math.max(marginDefault, 8);
+        }
+        currentY += height + marginAfter;
+      });
+    }
+    if (isBypassed) {
+      try {
+        ctx.save();
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(142, 88, 255, 0.42)";
+        const radius = 6;
+        if (typeof ctx.roundRect === "function") {
+          ctx.beginPath();
+          ctx.roundRect(4, 4, Math.max(0, node.size[0] - 8), Math.max(0, node.size[1] - 8), radius);
+          ctx.fill();
+        } else {
+          ctx.fillRect(4, 4, Math.max(0, node.size[0] - 8), Math.max(0, node.size[1] - 8));
+        }
+        ctx.restore();
+      } catch {
+      }
+    }
   }
   /**
    * Handle mouse interactions
@@ -2947,6 +3002,9 @@ const _SuperLoraNode = class _SuperLoraNode {
   }
   static handleMouseEvent(node, event, pos, handler) {
     if (!node.customWidgets) return false;
+    if (_SuperLoraNode.isNodeBypassed(node)) {
+      return true;
+    }
     try {
       const rect = app?.canvas?.canvas?.getBoundingClientRect?.();
       const ds = app?.canvas?.ds;
@@ -3744,6 +3802,8 @@ _SuperLoraNode.NODE_WIDGET_TOP_OFFSET = 68;
 _SuperLoraNode.MARGIN_SMALL = 2;
 _SuperLoraNode.loraService = LoraService.getInstance();
 _SuperLoraNode.templateService = TemplateService.getInstance();
+_SuperLoraNode.initialized = false;
+_SuperLoraNode.initializationPromise = null;
 let SuperLoraNode = _SuperLoraNode;
 const _FilePickerService = class _FilePickerService {
   constructor() {
@@ -4539,42 +4599,47 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     if (!node.__ndPowerEnabled) return;
     const titleHeight = node.constructor?.title_height ?? node.title_height ?? 24;
     const nodeWidth = node.size?.[0] || 140;
-    const badgeWidth = 92;
-    const badgeHeight = 16;
-    const margin = 6;
-    const radius = 6;
-    const centerX = nodeWidth - badgeWidth / 2 - margin;
-    const centerY = titleHeight / 2;
     ctx.save();
-    ctx.translate(node.pos?.[0] ?? 0, node.pos?.[1] ?? 0);
+    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    const label = _NodeEnhancerExtension.INDICATOR_LABEL;
+    const metrics = ctx.measureText(label);
+    const textWidth = metrics.width;
+    const textHeight = (metrics.actualBoundingBoxAscent ?? 7) + (metrics.actualBoundingBoxDescent ?? 3);
+    const horizontalPadding = 10;
+    const verticalPadding = 4;
+    const minBadgeWidth = textWidth + horizontalPadding * 2;
+    const badgeWidth = Math.max(56, Math.min(nodeWidth - 12, minBadgeWidth));
+    const badgeHeight = Math.max(16, textHeight + verticalPadding * 2);
+    const originX = Math.max(6, (nodeWidth - badgeWidth) / 2);
+    const originY = Math.max(2, (titleHeight - badgeHeight) / 2);
+    const radius = Math.min(8, badgeHeight / 2);
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(29, 114, 194, 0.22)";
     if (typeof ctx.roundRect === "function") {
       ctx.beginPath();
-      ctx.fillStyle = "rgba(30, 136, 229, 0.15)";
-      ctx.roundRect(nodeWidth - badgeWidth - margin, (titleHeight - badgeHeight) / 2, badgeWidth, badgeHeight, radius);
+      ctx.roundRect(originX, originY, badgeWidth, badgeHeight, radius);
       ctx.fill();
-      ctx.strokeStyle = "rgba(30, 136, 229, 0.45)";
+      ctx.strokeStyle = "rgba(76, 176, 255, 0.55)";
       ctx.stroke();
+    } else {
+      ctx.fillRect(originX, originY, badgeWidth, badgeHeight);
+      ctx.strokeStyle = "rgba(76, 176, 255, 0.55)";
+      ctx.strokeRect(originX, originY, badgeWidth, badgeHeight);
     }
-    ctx.font = "11px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "#64b5f6";
-    ctx.fillText("⚡ ND Selector", centerX, centerY);
+    ctx.fillStyle = "#6ec6ff";
+    ctx.fillText(label, originX + badgeWidth / 2, originY + badgeHeight / 2 + 0.5);
+    ctx.restore();
     ctx.restore();
   }
   static applyTitleBadge(node) {
     try {
-      if (!node.__ndPowerEnabled) {
-        _NodeEnhancerExtension.restoreTitle(node);
-        return;
-      }
       if (typeof node.__ndOriginalTitle === "undefined") {
         node.__ndOriginalTitle = node.title || node.constructor?.title || "";
-      }
-      const originalTitle = node.__ndOriginalTitle || "";
-      const suffix = _NodeEnhancerExtension.TITLE_SUFFIX;
-      if (!node.title?.includes(suffix)) {
-        node.title = originalTitle ? `${originalTitle} ${suffix}` : suffix;
+      } else {
+        node.title = node.__ndOriginalTitle;
       }
     } catch {
     }
@@ -4583,8 +4648,6 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     try {
       if (typeof node.__ndOriginalTitle !== "undefined") {
         node.title = node.__ndOriginalTitle;
-      } else if (node.title) {
-        node.title = node.title.split(_NodeEnhancerExtension.TITLE_SUFFIX).join("").trim();
       }
     } catch {
     }
@@ -4742,7 +4805,7 @@ _NodeEnhancerExtension.ENHANCED_NODES = [
   }
 ];
 _NodeEnhancerExtension.filePickerService = FilePickerService.getInstance();
-_NodeEnhancerExtension.TITLE_SUFFIX = "⚡ ND Selector";
+_NodeEnhancerExtension.INDICATOR_LABEL = "⚡ ND UI";
 _NodeEnhancerExtension.HIDDEN_WIDGET_SIZE = (_width) => [0, -4];
 _NodeEnhancerExtension.DEBUG = true;
 let NodeEnhancerExtension = _NodeEnhancerExtension;
@@ -4902,11 +4965,15 @@ const superLoraExtension = {
   /**
    * Called before a node type is registered
    */
-  async beforeRegisterNodeDef(nodeType, nodeData) {
+  beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name === NODE_TYPE) {
+      console.log("Super LoRA Loader: Registering node type");
+      SuperLoraNode.initialize().then(() => {
+        console.log("Super LoRA Loader: Services initialized");
+      }).catch((err) => {
+        console.error("Super LoRA Loader: Initialization error", err);
+      });
       try {
-        console.log("Super LoRA Loader: Registering node type");
-        await SuperLoraNode.initialize();
         SuperLoraNode.setup(nodeType, nodeData);
         console.log("Super LoRA Loader: Node type registered successfully");
       } catch (err) {

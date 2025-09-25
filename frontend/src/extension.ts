@@ -82,13 +82,21 @@ const superLoraExtension: ComfyExtension = {
   /**
    * Called before a node type is registered
    */
-  async beforeRegisterNodeDef(nodeType: any, nodeData: any): Promise<void> {
+  beforeRegisterNodeDef(nodeType: any, nodeData: any): void {
     if (nodeData.name === NODE_TYPE) {
+      console.log('Super LoRA Loader: Registering node type');
+
+      // Kick off async initialization without blocking node registration.
+      SuperLoraNode.initialize()
+        .then(() => {
+          console.log('Super LoRA Loader: Services initialized');
+        })
+        .catch((err) => {
+          console.error('Super LoRA Loader: Initialization error', err);
+        });
+
       try {
-        console.log('Super LoRA Loader: Registering node type');
-        // Initialize the SuperLoraNode
-        await SuperLoraNode.initialize();
-        // Set up the node type
+        // Set up the node type immediately so ComfyUI can register it synchronously.
         SuperLoraNode.setup(nodeType, nodeData);
         console.log('Super LoRA Loader: Node type registered successfully');
       } catch (err) {

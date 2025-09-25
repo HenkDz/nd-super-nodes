@@ -29,34 +29,76 @@ export class SuperLoraNode {
   private static loraService: LoraService = LoraService.getInstance();
   public static templateService: TemplateService = TemplateService.getInstance();
   public static civitaiService: CivitAiService;
+  private static initialized = false;
+  private static initializationPromise: Promise<void> | null = null;
   
   static async initialize(): Promise<void> {
-    this.loraService = LoraService.getInstance();
-    this.templateService = TemplateService.getInstance();
-    this.civitaiService = CivitAiService.getInstance();
-    
-    await Promise.all([
-      this.loraService.initialize(),
-      this.templateService.initialize()
-    ]);
-    // Bridge internal helpers/services to widgets via WidgetAPI
-    setWidgetAPI({
-      showLoraSelector: (node: any, widget?: any, e?: any) => SuperLoraNode.showLoraSelector(node, widget, e),
-      showTagSelector: (node: any, widget: any) => SuperLoraNode.showTagSelector(node, widget),
-      showSettingsDialog: (node: any, e?: any) => SuperLoraNode.showSettingsDialog(node, e),
-      showLoadTemplateDialog: (node: any, e?: any) => SuperLoraNode.showLoadTemplateDialog(node, e),
-      showNameOverlay: (opts: any) => SuperLoraNode.showNameOverlay(opts),
-      showInlineText: (e: any, initial: string, onCommit: (v: string) => void, place?: any) => SuperLoraNode.showInlineText(e, initial, onCommit, place),
-      showToast: (m: string, t?: any) => SuperLoraNode.showToast(m, t),
-      calculateNodeSize: (node: any) => SuperLoraNode.calculateNodeSize(node),
-      organizeByTags: (node: any) => SuperLoraNode.organizeByTags(node),
-      addLoraWidget: (node: any, config?: any) => SuperLoraNode.addLoraWidget(node, config),
-      removeLoraWidget: (node: any, widget: any) => SuperLoraNode.removeLoraWidget(node, widget),
-      getLoraConfigs: (node: any) => SuperLoraNode.getLoraConfigs(node),
-      templateService: SuperLoraNode.templateService,
-      civitaiService: SuperLoraNode.civitaiService,
-      syncExecutionWidgets: (node: any) => SuperLoraNode.syncExecutionWidgets(node),
-    });
+    if (this.initialized) {
+      return;
+    }
+
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = (async () => {
+      this.loraService = LoraService.getInstance();
+      this.templateService = TemplateService.getInstance();
+      this.civitaiService = CivitAiService.getInstance();
+
+      // Bridge internal helpers/services to widgets via WidgetAPI immediately
+      setWidgetAPI({
+        showLoraSelector: (node: any, widget?: any, e?: any) => SuperLoraNode.showLoraSelector(node, widget, e),
+        showTagSelector: (node: any, widget: any) => SuperLoraNode.showTagSelector(node, widget),
+        showSettingsDialog: (node: any, e?: any) => SuperLoraNode.showSettingsDialog(node, e),
+        showLoadTemplateDialog: (node: any, e?: any) => SuperLoraNode.showLoadTemplateDialog(node, e),
+        showNameOverlay: (opts: any) => SuperLoraNode.showNameOverlay(opts),
+        showInlineText: (e: any, initial: string, onCommit: (v: string) => void, place?: any) => SuperLoraNode.showInlineText(e, initial, onCommit, place),
+        showToast: (m: string, t?: any) => SuperLoraNode.showToast(m, t),
+        calculateNodeSize: (node: any) => SuperLoraNode.calculateNodeSize(node),
+        organizeByTags: (node: any) => SuperLoraNode.organizeByTags(node),
+        addLoraWidget: (node: any, config?: any) => SuperLoraNode.addLoraWidget(node, config),
+        removeLoraWidget: (node: any, widget: any) => SuperLoraNode.removeLoraWidget(node, widget),
+        getLoraConfigs: (node: any) => SuperLoraNode.getLoraConfigs(node),
+        templateService: SuperLoraNode.templateService,
+        civitaiService: SuperLoraNode.civitaiService,
+        syncExecutionWidgets: (node: any) => SuperLoraNode.syncExecutionWidgets(node),
+      });
+
+      await Promise.all([
+        this.loraService.initialize(),
+        this.templateService.initialize()
+      ]);
+
+      this.initialized = true;
+    })();
+
+    try {
+      await this.initializationPromise;
+    } finally {
+      this.initializationPromise = null;
+    }
+  }
+
+  private static isNodeBypassed(node: any): boolean {
+    if (!node) {
+      return false;
+    }
+    const flags = node.flags || {};
+    if (flags.bypass || flags.bypassed || flags.skip_processing || flags.skipProcessing) {
+      return true;
+    }
+    if (node.properties && (node.properties.bypass === true || node.properties.skip === true)) {
+      return true;
+    }
+    try {
+      if (typeof LiteGraph !== 'undefined' && LiteGraph && typeof LiteGraph.NEVER === 'number') {
+        if (node.mode === LiteGraph.NEVER) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
   }
 
   /**
@@ -312,30 +354,50 @@ export class SuperLoraNode {
    */
   static drawCustomWidgets(node: any, ctx: any): void {
     if (!node.customWidgets) return;
+    const isBypassed = SuperLoraNode.isNodeBypassed(node);
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
 
-    // Build list of widgets that will render
-    const renderable: any[] = [];
-    for (const widget of node.customWidgets) {
-      const size = widget.computeSize();
-      const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
-      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-      if (height === 0 || isCollapsed) continue;
-      renderable.push(widget);
+    if (!isBypassed) {
+      // Build list of widgets that will render
+      const renderable: any[] = [];
+      for (const widget of node.customWidgets) {
+        const size = widget.computeSize();
+        const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
+        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+        if (height === 0 || isCollapsed) continue;
+        renderable.push(widget);
+      }
+
+      renderable.forEach((widget, index) => {
+        const size = widget.computeSize();
+        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
+        widget.draw(ctx, node, node.size[0], currentY, height);
+        let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
+        const isLast = index === renderable.length - 1;
+        if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+          marginAfter = Math.max(marginDefault, 8);
+        }
+        currentY += height + marginAfter;
+      });
     }
 
-    renderable.forEach((widget, index) => {
-      const size = widget.computeSize();
-      const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-      widget.draw(ctx, node, node.size[0], currentY, height);
-      let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
-      const isLast = index === renderable.length - 1;
-      if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
-        marginAfter = Math.max(marginDefault, 8);
-      }
-      currentY += height + marginAfter;
-    });
+    if (isBypassed) {
+      try {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(142, 88, 255, 0.42)';
+        const radius = 6;
+        if (typeof ctx.roundRect === 'function') {
+          ctx.beginPath();
+          ctx.roundRect(4, 4, Math.max(0, node.size[0] - 8), Math.max(0, node.size[1] - 8), radius);
+          ctx.fill();
+        } else {
+          ctx.fillRect(4, 4, Math.max(0, node.size[0] - 8), Math.max(0, node.size[1] - 8));
+        }
+        ctx.restore();
+      } catch {}
+    }
   }
 
   /**
@@ -351,6 +413,10 @@ export class SuperLoraNode {
 
   private static handleMouseEvent(node: any, event: any, pos: any, handler: string): boolean {
     if (!node.customWidgets) return false;
+
+    if (SuperLoraNode.isNodeBypassed(node)) {
+      return true;
+    }
 
     //console.log(`[SuperLoraNode] Mouse event: pos=[${pos[0]}, ${pos[1]}], handler=${handler}`);
     //console.log('Node customWidgets:', node.customWidgets.map((w: any, i: number) => `${i}:${w.constructor.name}`));
