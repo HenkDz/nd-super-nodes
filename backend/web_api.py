@@ -12,6 +12,7 @@ except Exception:
 from .lora_utils import get_available_loras, extract_trigger_words
 from .template_manager import get_template_manager
 from .civitai_service import get_civitai_service
+from .version_utils import get_update_status
 
 
 async def get_loras(request):
@@ -221,6 +222,16 @@ async def delete_template_by_name(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
+async def get_version_info(request):
+    """Return local version info plus cached update availability."""
+    try:
+        force = request.rel_url.query.get("force") in {"1", "true", "yes"}
+        status = await get_update_status(force=force)
+        return web.json_response(status)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 # Route registration function
 def register_routes(app):
     """Register all Super LoRA Loader routes"""
@@ -234,3 +245,16 @@ def register_routes(app):
     app.router.add_post("/super_lora/templates/delete", delete_template)  # expects JSON body { name }
     app.router.add_delete("/super_lora/templates/{name}", delete_template_by_name)
     app.router.add_post("/super_lora/civitai_info", get_civitai_info)
+    app.router.add_get("/super_lora/version", get_version_info)
+
+    # Legacy aliases without underscore for older frontends / workflows
+    app.router.add_get("/superlora/loras", get_loras)
+    app.router.add_get("/superlora/files", get_files)
+    app.router.add_get("/superlora/templates", get_templates)
+    app.router.add_post("/superlora/templates", save_template)
+    app.router.add_get("/superlora/templates/{name}", load_template)
+    app.router.add_delete("/superlora/templates", delete_template)
+    app.router.add_post("/superlora/templates/delete", delete_template)
+    app.router.add_delete("/superlora/templates/{name}", delete_template_by_name)
+    app.router.add_post("/superlora/civitai_info", get_civitai_info)
+    app.router.add_get("/superlora/version", get_version_info)

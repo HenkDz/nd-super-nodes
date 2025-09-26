@@ -9,6 +9,7 @@ import { TemplateService } from '@/services/TemplateService';
 import { CivitAiService } from '@/services/CivitAiService';
 import { TagSetService } from '@/services/TagSetService';
 import { OverlayService } from '@/services/OverlayService';
+import { UpdateService } from '@/services/UpdateService';
 // import { SuperLoraBaseWidget } from './widgets/SuperLoraBaseWidget';
 import { SuperLoraHeaderWidget } from './widgets/SuperLoraHeaderWidget';
 import { SuperLoraTagWidget } from './widgets/SuperLoraTagWidget';
@@ -29,6 +30,7 @@ export class SuperLoraNode {
   private static loraService: LoraService = LoraService.getInstance();
   public static templateService: TemplateService = TemplateService.getInstance();
   public static civitaiService: CivitAiService;
+  private static updateService: UpdateService;
   private static initialized = false;
   private static initializationPromise: Promise<void> | null = null;
   
@@ -45,6 +47,7 @@ export class SuperLoraNode {
       this.loraService = LoraService.getInstance();
       this.templateService = TemplateService.getInstance();
       this.civitaiService = CivitAiService.getInstance();
+  this.updateService = UpdateService.getInstance();
 
       // Bridge internal helpers/services to widgets via WidgetAPI immediately
       setWidgetAPI({
@@ -67,8 +70,13 @@ export class SuperLoraNode {
 
       await Promise.all([
         this.loraService.initialize(),
-        this.templateService.initialize()
+        this.templateService.initialize(),
+        this.updateService.initialize()
       ]);
+
+      try {
+        (window as any).NDSuperNodesUpdateStatus = this.updateService.getStatus();
+      } catch {}
 
       this.initialized = true;
     })();

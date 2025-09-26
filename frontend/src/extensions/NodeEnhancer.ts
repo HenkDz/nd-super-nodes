@@ -33,7 +33,7 @@ const nodeEnhancerExtension: ComfyExtension = {
     },
     {
       id: 'nodeEnhancer.enableContextToggle',
-      name: 'Show ND Selector Toggle in Node Menu',
+      name: 'Show ND Super Selector Toggle in Node Menu',
       type: 'boolean',
       defaultValue: true
     }
@@ -43,11 +43,11 @@ const nodeEnhancerExtension: ComfyExtension = {
   commands: [
     {
       id: 'nodeEnhancer.clearCache',
-      label: 'ND Power UI: Clear File Cache',
+      label: 'ND Super Selector: Clear File Cache',
       function: () => {
         try {
           (NodeEnhancerExtension as any)['filePickerService']?.clearCache?.();
-          console.log('ND Power UI: File cache cleared');
+          console.log('ND Super Selector: File cache cleared');
         } catch {}
       }
     }

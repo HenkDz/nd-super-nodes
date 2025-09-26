@@ -1,5 +1,5 @@
 /**
- * Overlay and toast utilities shared across the Super LoRA node and ND Power UI enhancer.
+ * Overlay and toast utilities shared across the Super LoRA node and ND Super Selector enhancer.
  */
 
 export type OverlayItem = {

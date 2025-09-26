@@ -1484,6 +1484,103 @@ class OverlayService {
     return `superlora_subfolder_filters${suffix}`;
   }
 }
+class UpdateService {
+  constructor() {
+    this.status = null;
+    this.checkingPromise = null;
+    this.lastNotifiedVersion = null;
+  }
+  static getInstance() {
+    if (!UpdateService.instance) {
+      UpdateService.instance = new UpdateService();
+    }
+    return UpdateService.instance;
+  }
+  getStatus() {
+    return this.status;
+  }
+  async initialize() {
+    try {
+      const status = await this.checkForUpdates({ silent: true });
+      this.maybeNotify(status);
+    } catch (error) {
+      console.warn("ND Super Nodes: update check failed to initialize", error);
+    }
+  }
+  async checkForUpdates(options = {}) {
+    const { force = false, silent = false } = options;
+    if (this.checkingPromise) {
+      return this.checkingPromise;
+    }
+    if (!force && this.status) {
+      if (!silent) {
+        this.maybeNotify(this.status, { showUpToDate: true });
+      }
+      return this.status;
+    }
+    this.checkingPromise = this.fetchStatus(force).then((status) => {
+      this.status = status;
+      if (!silent) {
+        this.maybeNotify(status, { showUpToDate: true });
+      } else {
+        this.maybeNotify(status);
+      }
+      return status;
+    }).catch((error) => {
+      console.warn("ND Super Nodes: update check failed", error);
+      if (!silent) {
+        OverlayService.getInstance().showToast("ND Super Nodes update check failed. See console for details.", "warning");
+      }
+      throw error;
+    }).finally(() => {
+      this.checkingPromise = null;
+    });
+    return this.checkingPromise;
+  }
+  openReleasePage() {
+    const url = this.status?.releaseUrl || "https://github.com/HenkDz/nd-super-nodes/releases/latest";
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      OverlayService.getInstance().showToast("Unable to open release page. Copy URL from console.", "warning");
+      console.warn("ND Super Nodes release URL:", url, error);
+    }
+  }
+  async fetchStatus(force) {
+    const url = force ? "/super_lora/version?force=1" : "/super_lora/version";
+    const response = await fetch(url, { cache: force ? "reload" : "no-store" });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`HTTP ${response.status}: ${text}`);
+    }
+    const payload = await response.json();
+    return payload;
+  }
+  maybeNotify(status, options = {}) {
+    if (!status) {
+      return;
+    }
+    const latestVersion = status.latestVersion || status.localVersion?.version;
+    const alreadyNotified = latestVersion && latestVersion === this.lastNotifiedVersion;
+    if (status.hasUpdate) {
+      if (alreadyNotified) {
+        return;
+      }
+      this.lastNotifiedVersion = latestVersion || null;
+      const messageParts = [
+        `🚀 ND Super Nodes v${latestVersion} available`,
+        "Run update.ps1 / update.sh in your node folder to upgrade."
+      ];
+      OverlayService.getInstance().showToast(messageParts.join("\n"), "info");
+      console.info("ND Super Nodes: Update available", status);
+      return;
+    }
+    if (options.showUpToDate && !alreadyNotified) {
+      this.lastNotifiedVersion = latestVersion || null;
+      OverlayService.getInstance().showToast("ND Super Nodes is up to date.", "success");
+    }
+  }
+}
 class SuperLoraBaseWidget {
   constructor(name) {
     this.name = name;
@@ -2695,6 +2792,7 @@ const _SuperLoraNode = class _SuperLoraNode {
       this.loraService = LoraService.getInstance();
       this.templateService = TemplateService.getInstance();
       this.civitaiService = CivitAiService.getInstance();
+      this.updateService = UpdateService.getInstance();
       setWidgetAPI({
         showLoraSelector: (node, widget, e) => _SuperLoraNode.showLoraSelector(node, widget, e),
         showTagSelector: (node, widget) => _SuperLoraNode.showTagSelector(node, widget),
@@ -2714,8 +2812,13 @@ const _SuperLoraNode = class _SuperLoraNode {
       });
       await Promise.all([
         this.loraService.initialize(),
-        this.templateService.initialize()
+        this.templateService.initialize(),
+        this.updateService.initialize()
       ]);
+      try {
+        window.NDSuperNodesUpdateStatus = this.updateService.getStatus();
+      } catch {
+      }
       this.initialized = true;
     })();
     try {
@@ -4058,10 +4161,45 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       return true;
     }
   }
+  static setNodeFlag(node, enabled) {
+    try {
+      node.properties = node.properties || {};
+      if (enabled) {
+        node.properties[_NodeEnhancerExtension.NODE_FLAG_KEY] = true;
+        node.properties[_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] = true;
+      } else if (node.properties) {
+        delete node.properties[_NodeEnhancerExtension.NODE_FLAG_KEY];
+        delete node.properties[_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY];
+      }
+    } catch {
+    }
+  }
+  static shouldRestoreEnabled(node, data) {
+    if (data) {
+      if (typeof data.ndSuperSelectorEnabled !== "undefined") {
+        return !!data.ndSuperSelectorEnabled;
+      }
+      if (typeof data.ndPowerEnabled !== "undefined") {
+        return !!data.ndPowerEnabled;
+      }
+    }
+    try {
+      const props = node?.properties;
+      if (props?.[_NodeEnhancerExtension.NODE_FLAG_KEY] === true) {
+        return true;
+      }
+      if (props?.[_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] === true) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
   static createOverlayWidget(node, targetWidget, config) {
     const overlayWidget = {
       name: `${config.widgetName}__ndOverlay`,
-      type: "ndPowerOverlay",
+      type: _NodeEnhancerExtension.OVERLAY_WIDGET_TYPE,
       value: targetWidget.value ?? "",
       _ndDisplayValue: targetWidget.value ?? "",
       _ndWidgetLabel: targetWidget.label || targetWidget.name || config.widgetName,
@@ -4371,9 +4509,13 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       }
       let options = Array.isArray(optionsArr) ? optionsArr : [];
       const maybe = originalMenu?.call(this, canvas, options);
-      if (Array.isArray(maybe)) options = maybe;
+      if (Array.isArray(maybe)) {
+        options = maybe;
+      } else if (!Array.isArray(options)) {
+        options = [];
+      }
       const toggleOption = {
-        content: this.__ndPowerEnabled ? "➖ Disable ND Power UI" : "⚡ Enable ND Power UI",
+        content: this.__ndPowerEnabled ? "➖ Disable ND Super Selector" : "⚡ Enable ND Super Selector",
         callback: () => {
           try {
             if (this.__ndPowerEnabled) {
@@ -4385,23 +4527,48 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
               this.__ndPowerEnabled = true;
               _NodeEnhancerExtension.applyTitleBadge(this);
             }
+            _NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
             this.setDirtyCanvas?.(true, true);
           } catch (error) {
             console.warn("Node Enhancer: toggle failed", error);
           }
         }
       };
-      if (options[0] !== null) {
-        options.unshift(null);
+      toggleOption.__ndSuperSelectorToggle = true;
+      const baseOptions = Array.isArray(options) ? options.slice() : [];
+      const filtered = baseOptions.filter((opt) => !opt?.__ndSuperSelectorToggle);
+      if (!Array.isArray(options)) {
+        options = Array.isArray(optionsArr) ? optionsArr : [];
       }
-      options.unshift(toggleOption);
+      options.length = 0;
+      options.push(toggleOption);
+      if (filtered.length) {
+        if (filtered[0] !== null) {
+          options.push(null);
+        }
+        options.push(...filtered);
+      }
+      if (Array.isArray(optionsArr) && optionsArr !== options) {
+        optionsArr.length = 0;
+        optionsArr.push(...options);
+      }
       return options;
     };
     const originalSerialize = nodeType.prototype.serialize;
     nodeType.prototype.serialize = function() {
       const data = originalSerialize ? originalSerialize.apply(this, arguments) : {};
       try {
-        data.ndPowerEnabled = !!this.__ndPowerEnabled;
+        const enabled = !!this.__ndPowerEnabled;
+        data.ndSuperSelectorEnabled = enabled;
+        data.ndPowerEnabled = enabled;
+        data.properties = data.properties || {};
+        if (enabled) {
+          data.properties[_NodeEnhancerExtension.NODE_FLAG_KEY] = true;
+          data.properties[_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] = true;
+        } else if (data.properties) {
+          delete data.properties[_NodeEnhancerExtension.NODE_FLAG_KEY];
+          delete data.properties[_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY];
+        }
         if (this.__ndEnhancedWidgets && Array.isArray(this.widgets)) {
           const hasOverlayWidgets = this.widgets.some((w) => w?.__ndOverlay);
           if (hasOverlayWidgets) {
@@ -4433,17 +4600,22 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       }
       try {
         if (typeof this.__ndPowerEnabled === "undefined") this.__ndPowerEnabled = false;
-        if (data && data.ndPowerEnabled) {
+        const shouldEnable = _NodeEnhancerExtension.shouldRestoreEnabled(this, data);
+        if (shouldEnable) {
           if (!this.__ndPowerEnabled) {
             this.__ndPowerEnabled = true;
             configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
           }
           _NodeEnhancerExtension.applyTitleBadge(this);
-        } else {
+        } else if (this.__ndPowerEnabled) {
           configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
           this.__ndPowerEnabled = false;
           _NodeEnhancerExtension.restoreTitle(this);
+        } else {
+          configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
+          _NodeEnhancerExtension.restoreTitle(this);
         }
+        _NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
       } catch {
       }
     };
@@ -4480,10 +4652,12 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     });
     this.enhanceWidget(node, widget, config);
     this.applyTitleBadge(node);
+    this.setNodeFlag(node, true);
   }
   /** Enable enhancement for a specific node instance */
   static enableForNode(node, config) {
     this.setupEnhancedNode(node, config);
+    this.setNodeFlag(node, true);
   }
   /** Disable enhancement for a specific node instance */
   static disableForNode(node, config) {
@@ -4496,6 +4670,7 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       node.__ndPowerEnabled = false;
     }
     _NodeEnhancerExtension.restoreTitle(node);
+    this.setNodeFlag(node, !!node.__ndPowerEnabled);
   }
   static showEnhancedPicker(node, config) {
     const widget = node.widgets?.find((w) => w.name === config.widgetName);
@@ -4684,80 +4859,83 @@ _NodeEnhancerExtension.ENHANCED_NODES = [
     nodeType: "CheckpointLoader",
     fileType: "models",
     widgetName: "ckpt_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "CheckpointLoaderSimple",
     fileType: "models",
     widgetName: "ckpt_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "VAELoader",
     fileType: "vae",
     widgetName: "vae_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "LoraLoader",
     fileType: "loras",
     widgetName: "lora_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "UNETLoader",
     fileType: "diffusion_models",
     widgetName: "unet_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "UnetLoaderGGUF",
     fileType: "gguf_unet_models",
     widgetName: "unet_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "UnetLoaderGGUFAdvanced",
     fileType: "gguf_unet_models",
     widgetName: "unet_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "CLIPLoader",
     fileType: "text_encoders",
     widgetName: "clip_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "CLIPLoaderGGUF",
     fileType: "text_encoders",
     widgetName: "clip_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   ...Object.entries(GGUF_CLIP_WIDGET_MAP).flatMap(
     ([nodeType, widgetNames]) => widgetNames.map((widgetName, index) => ({
       nodeType,
       fileType: "text_encoders",
       widgetName,
-      label: `ND Selector (${index + 1})`
+      label: `ND Super Selector (${index + 1})`
     }))
   ),
   {
     nodeType: "ControlNetLoader",
     fileType: "controlnet",
     widgetName: "control_net_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   },
   {
     nodeType: "UpscaleModelLoader",
     fileType: "upscale_models",
     widgetName: "model_name",
-    label: "ND Selector"
+    label: "ND Super Selector"
   }
 ];
 _NodeEnhancerExtension.filePickerService = FilePickerService.getInstance();
 _NodeEnhancerExtension.HIDDEN_WIDGET_SIZE = (_width) => [0, -4];
 _NodeEnhancerExtension.DEBUG = true;
+_NodeEnhancerExtension.NODE_FLAG_KEY = "ndSuperSelectorEnabled";
+_NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY = "ndPowerEnabled";
+_NodeEnhancerExtension.OVERLAY_WIDGET_TYPE = "ndSuperSelectorOverlay";
 let NodeEnhancerExtension = _NodeEnhancerExtension;
 const EXTENSION_NAME$1 = "NodeEnhancer";
 const EXTENSION_VERSION = "1.0.0";
@@ -4780,7 +4958,7 @@ const nodeEnhancerExtension = {
     },
     {
       id: "nodeEnhancer.enableContextToggle",
-      name: "Show ND Selector Toggle in Node Menu",
+      name: "Show ND Super Selector Toggle in Node Menu",
       type: "boolean",
       defaultValue: true
     }
@@ -4789,11 +4967,11 @@ const nodeEnhancerExtension = {
   commands: [
     {
       id: "nodeEnhancer.clearCache",
-      label: "ND Power UI: Clear File Cache",
+      label: "ND Super Selector: Clear File Cache",
       function: () => {
         try {
           NodeEnhancerExtension["filePickerService"]?.clearCache?.();
-          console.log("ND Power UI: File cache cleared");
+          console.log("ND Super Selector: File cache cleared");
         } catch {
         }
       }
@@ -4909,6 +5087,14 @@ const superLoraExtension = {
       label: "Show All Trigger Words",
       function: () => {
         console.log("Super LoRA Loader: Show trigger words command triggered");
+      }
+    },
+    {
+      id: "superLora.checkUpdates",
+      label: "Check ND Super Nodes Updates",
+      function: () => {
+        UpdateService.getInstance().checkForUpdates({ force: true, silent: false }).catch(() => {
+        });
       }
     }
   ],

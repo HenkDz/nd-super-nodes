@@ -127,7 +127,7 @@ private static readonly FILE_TYPES: Record<string, FileTypeConfig> = {
 
 #### Request Format
 
-```http
+```
 GET /super_lora/files?folder_name=vae&extensions=.ckpt,.pt,.safetensors
 ```
 
@@ -186,7 +186,7 @@ if (data.properties?.__ndPowerEnabled) {
 }
 ```
 
-1. **localStorage**: User preferences across sessions
+2. **localStorage**: User preferences across sessions
 
 ```typescript
 private static loadUserPreferences(): Set<string> {

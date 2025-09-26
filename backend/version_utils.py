@@ -7,10 +7,15 @@ import json
 import os
 import re
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-import aiohttp
+try:
+    import aiohttp
+except Exception:  # pragma: no cover - optional dependency on some installs
+    aiohttp = None  # type: ignore
 
 try:
     import folder_paths  # type: ignore
@@ -87,26 +92,45 @@ def _parse_version(value: Optional[str]) -> tuple:
 
 
 async def _fetch_latest_release() -> Optional[Dict[str, Any]]:
-    timeout = aiohttp.ClientTimeout(total=12)
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": USER_AGENT,
     }
-    try:
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            async with session.get(GITHUB_RELEASE_URL) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    print(
-                        "ND Super Nodes: GitHub release check failed",
-                        response.status,
-                        text[:200],
-                    )
+
+    if aiohttp is not None:
+        timeout = aiohttp.ClientTimeout(total=12)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(GITHUB_RELEASE_URL) as response:
+                    if response.status != 200:
+                        text = await response.text()
+                        print(
+                            "ND Super Nodes: GitHub release check failed",
+                            response.status,
+                            text[:200],
+                        )
+                        return None
+                    return await response.json()
+        except Exception as exc:
+            print(f"ND Super Nodes: GitHub release lookup error: {exc}")
+            return None
+
+    def _fetch_sync() -> Optional[Dict[str, Any]]:
+        request = urllib.request.Request(GITHUB_RELEASE_URL, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=12) as resp:  # type: ignore[arg-type]
+                status = getattr(resp, "status", None) or getattr(resp, "code", None)
+                if status != 200:
+                    snippet = resp.read(200).decode("utf-8", "ignore")
+                    print("ND Super Nodes: GitHub release check failed", status, snippet)
                     return None
-                return await response.json()
-    except Exception as exc:
-        print(f"ND Super Nodes: GitHub release lookup error: {exc}")
-        return None
+                raw = resp.read().decode("utf-8", "ignore")
+                return json.loads(raw)
+        except urllib.error.URLError as exc:
+            print(f"ND Super Nodes: GitHub release lookup error: {exc}")
+            return None
+
+    return await asyncio.to_thread(_fetch_sync)
 
 
 def _compose_status(
@@ -167,15 +191,20 @@ async def get_update_status(force: bool = False) -> Dict[str, Any]:
 
         cached = None if force else _load_cached_status()
         if cached:
-            try:
-                checked_at = datetime.fromisoformat(cached.get("checkedAt"))
-                age = (_now() - checked_at).total_seconds()
-                if age < CHECK_INTERVAL_SECONDS:
-                    _cache_data = cached
-                    _cache_timestamp = now
-                    return cached
-            except Exception:
-                pass
+            # Invalidate cache if local version has changed (e.g., after update)
+            current_version = get_local_version().get("version", "0.0.0")
+            if cached.get('localVersion', {}).get('version') != current_version:
+                cached = None
+            else:
+                try:
+                    checked_at = datetime.fromisoformat(cached.get("checkedAt"))
+                    age = (_now() - checked_at).total_seconds()
+                    if age < CHECK_INTERVAL_SECONDS:
+                        _cache_data = cached
+                        _cache_timestamp = now
+                        return cached
+                except Exception:
+                    pass
 
         release_payload = await _fetch_latest_release()
         status = _compose_status(get_local_version(), release_payload, _now())
@@ -198,4 +227,3 @@ async def clear_update_cache() -> None:
         except Exception as exc:
             print(f"ND Super Nodes: Failed to clear update cache: {exc}")
 
-```}

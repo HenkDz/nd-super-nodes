@@ -1,5 +1,4 @@
 import { OverlayService } from '@/services/OverlayService';
-import { fetchWithFallback } from '@/services/ApiClient';
 
 type VersionInfo = {
   checkedAt: string;
@@ -100,14 +99,12 @@ export class UpdateService {
   }
 
   private async fetchStatus(force: boolean): Promise<VersionInfo> {
-    const path = force ? '/version?force=1' : '/version';
-    const { response, url } = await fetchWithFallback(path, {
-      cache: force ? 'reload' : 'no-store'
-    });
+    const url = force ? '/super_lora/version?force=1' : '/super_lora/version';
+    const response = await fetch(url, { cache: force ? 'reload' : 'no-store' });
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`HTTP ${response.status} from ${url}: ${text}`);
+      throw new Error(`HTTP ${response.status}: ${text}`);
     }
 
     const payload = (await response.json()) as VersionInfo;

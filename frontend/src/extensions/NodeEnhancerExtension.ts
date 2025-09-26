@@ -27,81 +27,84 @@ export class NodeEnhancerExtension {
       nodeType: 'CheckpointLoader',
       fileType: 'models',
       widgetName: 'ckpt_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'CheckpointLoaderSimple',
       fileType: 'models',
       widgetName: 'ckpt_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'VAELoader',
       fileType: 'vae',
       widgetName: 'vae_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'LoraLoader',
       fileType: 'loras',
       widgetName: 'lora_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'UNETLoader',
       fileType: 'diffusion_models',
       widgetName: 'unet_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'UnetLoaderGGUF',
       fileType: 'gguf_unet_models',
       widgetName: 'unet_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'UnetLoaderGGUFAdvanced',
       fileType: 'gguf_unet_models',
       widgetName: 'unet_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'CLIPLoader',
       fileType: 'text_encoders',
       widgetName: 'clip_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'CLIPLoaderGGUF',
       fileType: 'text_encoders',
       widgetName: 'clip_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     ...Object.entries(GGUF_CLIP_WIDGET_MAP).flatMap(([nodeType, widgetNames]) =>
       widgetNames.map((widgetName, index) => ({
         nodeType,
         fileType: 'text_encoders',
         widgetName,
-        label: `ND Selector (${index + 1})`
+        label: `ND Super Selector (${index + 1})`
       }))
     ),
     {
       nodeType: 'ControlNetLoader',
       fileType: 'controlnet',
       widgetName: 'control_net_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     },
     {
       nodeType: 'UpscaleModelLoader',
       fileType: 'upscale_models',
       widgetName: 'model_name',
-      label: 'ND Selector'
+      label: 'ND Super Selector'
     }
   ];
 
   private static filePickerService: FilePickerService = FilePickerService.getInstance();
   private static readonly HIDDEN_WIDGET_SIZE = (_width?: number) => [0, -4] as [number, number];
   private static readonly DEBUG = true;
+  private static readonly NODE_FLAG_KEY = 'ndSuperSelectorEnabled';
+  private static readonly LEGACY_NODE_FLAG_KEY = 'ndPowerEnabled';
+  private static readonly OVERLAY_WIDGET_TYPE = 'ndSuperSelectorOverlay';
 
   private static debugLog(...args: any[]): void {
     if (this.DEBUG) {
@@ -141,16 +144,52 @@ export class NodeEnhancerExtension {
   }
   private static isGloballyEnabled(): boolean {
     try {
-      return app?.ui?.settings?.getSettingValue?.('nodeEnhancer.enableContextToggle', true) !== false;
+  return app?.ui?.settings?.getSettingValue?.('nodeEnhancer.enableContextToggle', true) !== false;
     } catch {
       return true;
+    }
+  }
+
+  private static setNodeFlag(node: any, enabled: boolean): void {
+    try {
+      node.properties = node.properties || {};
+      if (enabled) {
+        node.properties[NodeEnhancerExtension.NODE_FLAG_KEY] = true;
+        node.properties[NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] = true;
+      } else if (node.properties) {
+        delete node.properties[NodeEnhancerExtension.NODE_FLAG_KEY];
+        delete node.properties[NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY];
+      }
+    } catch {}
+  }
+
+  private static shouldRestoreEnabled(node: any, data?: any): boolean {
+    if (data) {
+      if (typeof data.ndSuperSelectorEnabled !== 'undefined') {
+        return !!data.ndSuperSelectorEnabled;
+      }
+      if (typeof data.ndPowerEnabled !== 'undefined') {
+        return !!data.ndPowerEnabled;
+      }
+    }
+    try {
+      const props = node?.properties;
+      if (props?.[NodeEnhancerExtension.NODE_FLAG_KEY] === true) {
+        return true;
+      }
+      if (props?.[NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] === true) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
   }
 
   private static createOverlayWidget(node: any, targetWidget: any, config: EnhancedNodeConfig): any {
     const overlayWidget: any = {
       name: `${config.widgetName}__ndOverlay`,
-      type: 'ndPowerOverlay',
+      type: NodeEnhancerExtension.OVERLAY_WIDGET_TYPE,
       value: targetWidget.value ?? '',
       _ndDisplayValue: targetWidget.value ?? '',
       _ndWidgetLabel: targetWidget.label || targetWidget.name || config.widgetName,
@@ -513,12 +552,17 @@ export class NodeEnhancerExtension {
       if (!NodeEnhancerExtension.isGloballyEnabled()) {
         return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
       }
+
       let options = Array.isArray(optionsArr) ? optionsArr : [];
       const maybe = originalMenu?.call(this, canvas, options);
-      if (Array.isArray(maybe)) options = maybe;
+      if (Array.isArray(maybe)) {
+        options = maybe;
+      } else if (!Array.isArray(options)) {
+        options = [];
+      }
 
-      const toggleOption = {
-        content: this.__ndPowerEnabled ? '➖ Disable ND Power UI' : '⚡ Enable ND Power UI',
+      const toggleOption: any = {
+        content: this.__ndPowerEnabled ? '➖ Disable ND Super Selector' : '⚡ Enable ND Super Selector',
         callback: () => {
           try {
             if (this.__ndPowerEnabled) {
@@ -530,17 +574,37 @@ export class NodeEnhancerExtension {
               this.__ndPowerEnabled = true;
               NodeEnhancerExtension.applyTitleBadge(this);
             }
+            NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
             this.setDirtyCanvas?.(true, true);
           } catch (error) {
             console.warn('Node Enhancer: toggle failed', error);
           }
         }
       };
+      toggleOption.__ndSuperSelectorToggle = true;
 
-      if (options[0] !== null) {
-        options.unshift(null);
+      const baseOptions = Array.isArray(options) ? options.slice() : [];
+      const filtered = baseOptions.filter((opt: any) => !opt?.__ndSuperSelectorToggle);
+
+      if (!Array.isArray(options)) {
+        options = Array.isArray(optionsArr) ? optionsArr : [];
       }
-      options.unshift(toggleOption);
+
+      options.length = 0;
+      options.push(toggleOption);
+
+      if (filtered.length) {
+        if (filtered[0] !== null) {
+          options.push(null);
+        }
+        options.push(...filtered);
+      }
+
+      if (Array.isArray(optionsArr) && optionsArr !== options) {
+        optionsArr.length = 0;
+        optionsArr.push(...options);
+      }
+
       return options;
     };
 
@@ -548,7 +612,17 @@ export class NodeEnhancerExtension {
     nodeType.prototype.serialize = function() {
       const data = originalSerialize ? originalSerialize.apply(this, arguments) : {};
       try {
-        data.ndPowerEnabled = !!this.__ndPowerEnabled;
+        const enabled = !!this.__ndPowerEnabled;
+        data.ndSuperSelectorEnabled = enabled;
+        data.ndPowerEnabled = enabled;
+        data.properties = data.properties || {};
+        if (enabled) {
+          data.properties[NodeEnhancerExtension.NODE_FLAG_KEY] = true;
+          data.properties[NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY] = true;
+        } else if (data.properties) {
+          delete data.properties[NodeEnhancerExtension.NODE_FLAG_KEY];
+          delete data.properties[NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY];
+        }
 
         if (this.__ndEnhancedWidgets && Array.isArray(this.widgets)) {
           const hasOverlayWidgets = this.widgets.some((w: any) => w?.__ndOverlay);
@@ -584,17 +658,23 @@ export class NodeEnhancerExtension {
       }
       try {
         if (typeof this.__ndPowerEnabled === 'undefined') this.__ndPowerEnabled = false;
-        if (data && data.ndPowerEnabled) {
+        const shouldEnable = NodeEnhancerExtension.shouldRestoreEnabled(this, data);
+
+        if (shouldEnable) {
           if (!this.__ndPowerEnabled) {
             this.__ndPowerEnabled = true;
             configs.forEach((cfg) => NodeEnhancerExtension.enableForNode(this, cfg));
           }
           NodeEnhancerExtension.applyTitleBadge(this);
-        } else {
+        } else if (this.__ndPowerEnabled) {
           configs.forEach((cfg) => NodeEnhancerExtension.disableForNode(this, cfg));
           this.__ndPowerEnabled = false;
           NodeEnhancerExtension.restoreTitle(this);
+        } else {
+          configs.forEach((cfg) => NodeEnhancerExtension.disableForNode(this, cfg));
+          NodeEnhancerExtension.restoreTitle(this);
         }
+        NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
       } catch {}
     };
 
@@ -637,11 +717,13 @@ export class NodeEnhancerExtension {
 
     this.enhanceWidget(node, widget, config);
     this.applyTitleBadge(node);
+    this.setNodeFlag(node, true);
   }
 
   /** Enable enhancement for a specific node instance */
   private static enableForNode(node: any, config: EnhancedNodeConfig): void {
     this.setupEnhancedNode(node, config);
+    this.setNodeFlag(node, true);
   }
 
   /** Disable enhancement for a specific node instance */
@@ -655,6 +737,7 @@ export class NodeEnhancerExtension {
       node.__ndPowerEnabled = false;
     }
     NodeEnhancerExtension.restoreTitle(node);
+    this.setNodeFlag(node, !!node.__ndPowerEnabled);
   }
 
   private static showEnhancedPicker(node: any, config: EnhancedNodeConfig): void {

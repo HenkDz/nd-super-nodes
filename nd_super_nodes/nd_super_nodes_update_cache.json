@@ -1,0 +1,17 @@
+{
+  "checkedAt": "2025-09-26T08:40:39.969288+00:00",
+  "localVersion": {
+    "version": "1.3.0-dev",
+    "builtAt": "2025-09-26T00:00:00Z"
+  },
+  "latestVersion": "1.3.0",
+  "publishedAt": "2025-09-25T23:54:05Z",
+  "releaseUrl": "https://github.com/HenkDz/nd-super-nodes/releases/tag/v1.1.0",
+  "hasUpdate": false,
+  "raw": {
+    "tag": "v1.3.0",
+    "name": "ND Super Nodes v1.3.0 (Compiled Release)",
+    "notes": "This is a compiled release containing only the runtime files needed for ComfyUI. No source code or build tools included.\r\n\r\n## Installation\r\n1. Download [nd-super-nodes-v1.3.0.zip](https://github.com/HenkDz/nd-super-nodes/releases/download/v1.3.0/nd-super-nodes-v1.3.0.zip) from Assets below.\r\n2. Extract to your ComfyUI custom_nodes folder (e.g., ComfyUI/custom_nodes/nd-super-nodes).\r\n3. Restart ComfyUI.\r\n\r\nFor full source code, clone the repo instead.",
+    "prerelease": false
+  }
+}

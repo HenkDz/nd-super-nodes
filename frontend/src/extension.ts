@@ -10,6 +10,7 @@ import { ComfyExtension } from './types';
 import { SuperLoraNode } from './nodes/SuperLoraNode';
 import './styles/super-lora.scss';
 import './extensions/NodeEnhancer';
+import { UpdateService } from './services/UpdateService';
 
 // Extension configuration
 const EXTENSION_NAME = 'SuperLoraLoader';
@@ -75,6 +76,16 @@ const superLoraExtension: ComfyExtension = {
       function: () => {
         // This could show a combined view of all trigger words
         console.log('Super LoRA Loader: Show trigger words command triggered');
+      }
+    },
+    {
+      id: 'superLora.checkUpdates',
+      label: 'Check ND Super Nodes Updates',
+      function: () => {
+        UpdateService.getInstance().checkForUpdates({ force: true, silent: false })
+          .catch(() => {
+            /* handled in service */
+          });
       }
     }
   ],
@@ -179,7 +190,7 @@ export * from './services/LoraService';
 export * from './services/CivitAiService';
 export * from './services/TemplateService';
 
-// Bridge SuperLoraNode helpers for other modules (e.g., ND Power UI)
+// Bridge SuperLoraNode helpers for other modules (e.g., ND Super Selector)
 try {
   (window as any).SuperLoraNode = SuperLoraNode;
 } catch {}
