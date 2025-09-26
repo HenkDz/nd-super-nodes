@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Enhanced UI feature (also known as "ND Power UI") allows injecting our custom search overlay onto existing ComfyUI nodes without modifying their source code. This feature enables users to enhance nodes like CheckpointLoader, VAELoader, LoraLoader, etc., with our advanced file picker overlay through a right-click context menu option.
+The Enhanced UI feature (also known as "ND Super Selector") allows injecting our custom search overlay onto existing ComfyUI nodes without modifying their source code. This feature enables users to enhance nodes like CheckpointLoader, VAELoader, LoraLoader, etc., with our advanced file picker overlay through a right-click context menu option.
 
 ## Architecture
 
@@ -74,7 +74,7 @@ The enhancement works by overriding key node prototype methods:
 1. **onNodeCreated**: Sets up enhanced nodes when they're instantiated
 2. **onDrawForeground**: Draws the "⚡ Enhanced" indicator
 3. **onMouseDown**: Handles mouse events for widget interactions
-4. **getExtraMenuOptions**: Adds the "Enable ND Power UI" context menu option
+4. **getExtraMenuOptions**: Adds the "Enable ND Super Selector" context menu option
 
 #### Widget Replacement
 
@@ -127,7 +127,7 @@ private static readonly FILE_TYPES: Record<string, FileTypeConfig> = {
 
 #### Request Format
 
-```
+```http
 GET /super_lora/files?folder_name=vae&extensions=.ckpt,.pt,.safetensors
 ```
 
@@ -186,7 +186,7 @@ if (data.properties?.__ndPowerEnabled) {
 }
 ```
 
-2. **localStorage**: User preferences across sessions
+1. **localStorage**: User preferences across sessions
 
 ```typescript
 private static loadUserPreferences(): Set<string> {
@@ -328,7 +328,7 @@ To add more node types:
 
 ### 4. Overlay Trigger Experiments (September 2025)
 
-We attempted several approaches to remove the legacy combo dropdown and trigger the ND Power UI overlay in a single click:
+We attempted several approaches to remove the legacy combo dropdown and trigger the ND Super Selector overlay in a single click:
 
 - **Widget override** (`frontend/src/extensions/NodeEnhancerExtension.ts`): replaced the widget’s `callback` and `mouse` handlers so we can intercept the click before the LiteGraph dropdown opens. This prevents crashes but the built-in dropdown still shows briefly, and the first click targets the widget focus while the second opens the overlay.
 - **DOM button injection** (same file, now reverted): tried to grab `widget.inputEl`, hide it, and append a custom “Open Picker” button. Modern ComfyUI LiteGraph widgets no longer expose a stable DOM input element, so the button never rendered. That change was rolled back.
@@ -384,7 +384,7 @@ The Enhanced UI feature successfully provides a non-invasive way to upgrade exis
 
 - Resolved the lingering single-click issue by hiding the native LiteGraph combo widget entirely and inserting our compact overlay proxy in its place. The overlay now opens on the very first click with no dropdown flash.
 - Added per-widget enhancement metadata so we no longer reuse the same draw handler across inputs. This prevents neighbouring fields from inheriting the selected file path and keeps non-file widgets (e.g., integers) from showing `NaN`.
-- Updated the GGUF loaders (UNet and CLIP variants) to iterate every exposed `clip_name*` input. Dual, Triple, and Quad CLIP loaders now get individual overlays without hiding the second (or third/fourth) slot, and the “Enable ND Power UI” toggle is available again on both regular and advanced GGUF nodes.
+- Updated the GGUF loaders (UNet and CLIP variants) to iterate every exposed `clip_name*` input. Dual, Triple, and Quad CLIP loaders now get individual overlays without hiding the second (or third/fourth) slot, and the “Enable ND Super Selector” toggle is available again on both regular and advanced GGUF nodes.
 - Restored the original widget handlers when disabling the enhancement so the native dropdown reappears immediately and the compact proxy is removed cleanly.
 - Reapplied the narrow overlay styling (≈120px width, reduced padding) so the trigger maintains the compact footprint we standardised on earlier experiments.
 
