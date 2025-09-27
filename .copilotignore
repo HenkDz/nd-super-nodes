@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+build/
+dist/
+*.so
+*.dll
+*.exe
+web/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
