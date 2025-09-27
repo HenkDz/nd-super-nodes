@@ -63,7 +63,17 @@ This is a compiled release containing only the runtime files needed for ComfyUI.
 For full source code, clone the repo instead.
 "@
 
-gh release create "v$Version" $ZipPath --title "ND Super Nodes v$Version (Compiled Release)" --notes $Notes
+if (-not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+    Write-Warning "Release: GH_TOKEN/GITHUB_TOKEN not found; attempting unauthenticated release (likely to fail)."
+}
+
+& gh release create "v$Version" $ZipPath --title "ND Super Nodes v$Version (Compiled Release)" --notes $Notes
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to create GitHub release v$Version (gh exit code $LASTEXITCODE)."
+    Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
+    Remove-Item $ZipPath -ErrorAction SilentlyContinue
+    exit $LASTEXITCODE
+}
 
 # Clean up
 Remove-Item -Recurse -Force $TempDir

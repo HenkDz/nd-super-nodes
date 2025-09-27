@@ -10,6 +10,8 @@ on:
 
 jobs:
   publish-node:
+    permissions:
+      contents: write
     name: Publish Custom Node to registry
     runs-on: ubuntu-latest
 
