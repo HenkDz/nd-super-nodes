@@ -26,6 +26,7 @@
 
 ## Dev workflow
 - Frontend: `cd frontend`, `bun install`, `bun run dev` for hot reload, `bun run build` (outputs to `../web`), `bun run type-check` for strict TS.
+- Quick shortcut: use `bun run --cwd ./frontend <script>` to run install/build/type-check commands without changing directories.
 - Backend: no build step; ComfyUI imports Python directly. Optional deps (e.g., `aiohttp`) are listed in `requirements.txt` for CivitAI support.
 - Release: `.\release.ps1 -Version "x.y.z"` builds assets and packages the distribution ZIP.
 

@@ -1718,7 +1718,7 @@ const _FilePickerService = class _FilePickerService {
     this.triggerLinkedServiceRefresh();
     try {
       window.dispatchEvent(new CustomEvent("nd-super-nodes:files-refreshed", { detail: { trigger } }));
-    } catch {
+    } catch (error) {
     }
   }
   triggerLinkedServiceRefresh() {
@@ -4277,6 +4277,23 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       console.debug("[NodeEnhancer]", ...args);
     }
   }
+  static isExtensionEnabled() {
+    try {
+      return app$1?.ui?.settings?.getSettingValue?.(this.SETTINGS.enabled, true) !== false;
+    } catch {
+      return true;
+    }
+  }
+  static isAutoEnhanceEnabled() {
+    try {
+      if (!this.isExtensionEnabled()) {
+        return false;
+      }
+      return app$1?.ui?.settings?.getSettingValue?.(this.SETTINGS.autoEnhanceAll, false) === true;
+    } catch {
+      return false;
+    }
+  }
   static normalizeValueForWidget(widget, value) {
     if (!widget || typeof value !== "string") {
       return value;
@@ -4305,7 +4322,10 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
   }
   static isGloballyEnabled() {
     try {
-      return app$1?.ui?.settings?.getSettingValue?.("nodeEnhancer.enableContextToggle", true) !== false;
+      if (!this.isExtensionEnabled()) {
+        return false;
+      }
+      return app$1?.ui?.settings?.getSettingValue?.(this.SETTINGS.contextToggle, true) !== false;
     } catch {
       return true;
     }
@@ -4629,6 +4649,8 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     console.log("Node Enhancer Extension: Initializing...");
     this.loadUserPreferences();
     await this.filePickerService;
+    this.setupSettingsSync();
+    this.refreshSettingState();
     console.log("Node Enhancer Extension: Initialized successfully");
   }
   /**
@@ -4656,12 +4678,14 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
       if (!_NodeEnhancerExtension.isGloballyEnabled()) {
         return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
       }
-      let options = Array.isArray(optionsArr) ? optionsArr : [];
-      const maybe = originalMenu?.call(this, canvas, options);
-      if (Array.isArray(maybe)) {
-        options = maybe;
-      } else if (!Array.isArray(options)) {
-        options = [];
+      const providedOptions = Array.isArray(optionsArr) ? optionsArr : [];
+      const originalResult = originalMenu ? originalMenu.call(this, canvas, providedOptions) : providedOptions;
+      const targetOptions = Array.isArray(originalResult) ? originalResult : Array.isArray(optionsArr) ? optionsArr : providedOptions;
+      const options = Array.isArray(targetOptions) ? targetOptions : [];
+      for (let i = options.length - 1; i >= 0; i--) {
+        if (options[i]?.__ndSuperSelectorToggle) {
+          options.splice(i, 1);
+        }
       }
       const toggleOption = {
         content: this.__ndPowerEnabled ? "➖ Disable ND Super Selector" : "⚡ Enable ND Super Selector",
@@ -4671,32 +4695,21 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
               configs.forEach((cfg) => _NodeEnhancerExtension.disableForNode(this, cfg));
               this.__ndPowerEnabled = false;
               _NodeEnhancerExtension.restoreTitle(this);
+              _NodeEnhancerExtension.setNodeFlag(this, false);
+              this.setDirtyCanvas?.(true, true);
             } else {
-              configs.forEach((cfg) => _NodeEnhancerExtension.enableForNode(this, cfg));
-              this.__ndPowerEnabled = true;
-              _NodeEnhancerExtension.applyTitleBadge(this);
+              _NodeEnhancerExtension.enableConfigsForNode(this, configs);
             }
-            _NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
-            this.setDirtyCanvas?.(true, true);
           } catch (error) {
             console.warn("Node Enhancer: toggle failed", error);
           }
         }
       };
       toggleOption.__ndSuperSelectorToggle = true;
-      const baseOptions = Array.isArray(options) ? options.slice() : [];
-      const filtered = baseOptions.filter((opt) => !opt?.__ndSuperSelectorToggle);
-      if (!Array.isArray(options)) {
-        options = Array.isArray(optionsArr) ? optionsArr : [];
+      if (options.length && options[0] !== null) {
+        options.unshift(null);
       }
-      options.length = 0;
-      options.push(toggleOption);
-      if (filtered.length) {
-        if (filtered[0] !== null) {
-          options.push(null);
-        }
-        options.push(...filtered);
-      }
+      options.unshift(toggleOption);
       if (Array.isArray(optionsArr) && optionsArr !== options) {
         optionsArr.length = 0;
         optionsArr.push(...options);
@@ -4807,6 +4820,39 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
   static enableForNode(node, config) {
     this.setupEnhancedNode(node, config);
     this.setNodeFlag(node, true);
+  }
+  static enableConfigsForNode(node, configs) {
+    if (!node || !Array.isArray(configs) || !configs.length) {
+      return;
+    }
+    let anyEnabled = false;
+    for (const config of configs) {
+      try {
+        this.enableForNode(node, config);
+        anyEnabled = true;
+      } catch (error) {
+        console.warn("Node Enhancer: failed to enable config", config, error);
+      }
+    }
+    if (anyEnabled) {
+      node.__ndPowerEnabled = true;
+      this.applyTitleBadge(node);
+      this.setNodeFlag(node, true);
+      node.setDirtyCanvas?.(true, true);
+    }
+  }
+  static enableEnhancementsForNode(node) {
+    if (!this.isExtensionEnabled()) {
+      return;
+    }
+    if (!node?.type) {
+      return;
+    }
+    const configs = this.ENHANCED_NODES.filter((cfg) => cfg.nodeType === node.type);
+    if (!configs.length) {
+      return;
+    }
+    this.enableConfigsForNode(node, configs);
   }
   /** Disable enhancement for a specific node instance */
   static disableForNode(node, config) {
@@ -4936,20 +4982,267 @@ const _NodeEnhancerExtension = class _NodeEnhancerExtension {
     return this.ENHANCED_NODES;
   }
   static enableEnhancement(nodeTypeName) {
-    const config = this.ENHANCED_NODES.find((cfg) => cfg.nodeType === nodeTypeName);
-    if (!config) return;
+    if (!this.isExtensionEnabled()) return;
+    const configs = this.ENHANCED_NODES.filter((cfg) => cfg.nodeType === nodeTypeName);
+    if (!configs.length) return;
     const graph = window.app?.graph;
     if (!graph) return;
     (graph._nodes || []).forEach((node) => {
-      if (node.type === nodeTypeName) {
+      if (node?.type === nodeTypeName) {
         try {
-          this.enableForNode(node, config);
-          node.setDirtyCanvas?.(true, true);
+          this.enableConfigsForNode(node, configs);
         } catch (error) {
           console.warn("Node Enhancer: failed to enable node", node, error);
         }
       }
     });
+  }
+  static setupSettingsSync(attempt = 0) {
+    if (this.settingsHookInitialized) {
+      return;
+    }
+    const settings = app$1?.ui?.settings;
+    if (!settings) {
+      if (attempt > 20) {
+        return;
+      }
+      const delay = Math.min(1e3, 100 * Math.max(1, attempt + 1));
+      setTimeout(() => this.setupSettingsSync(attempt + 1), delay);
+      return;
+    }
+    this.settingsHookInitialized = true;
+    try {
+      const originalSet = settings.setSettingValue?.bind(settings);
+      if (typeof originalSet === "function") {
+        const self = this;
+        settings.setSettingValue = function(key, value) {
+          const result = originalSet(key, value);
+          self.handleSettingChanged(key, value);
+          return result;
+        };
+      }
+    } catch (error) {
+      console.warn("Node Enhancer: failed to hook settings.setSettingValue", error);
+    }
+    try {
+      const originalLoad = settings.loadSettings?.bind(settings);
+      if (typeof originalLoad === "function") {
+        const self = this;
+        settings.loadSettings = async function(...args) {
+          const result = await originalLoad(...args);
+          self.refreshSettingState();
+          return result;
+        };
+      }
+    } catch (error) {
+      console.warn("Node Enhancer: failed to hook settings.loadSettings", error);
+    }
+    this.refreshSettingState();
+  }
+  static handleSettingChanged(key, value) {
+    if (this.suppressSettingSideEffects) {
+      return;
+    }
+    if (key === this.SETTINGS.enabled) {
+      this.handleGlobalEnabledChange(value !== false);
+    }
+    if (key === this.SETTINGS.autoEnhanceAll) {
+      if (value) {
+        this.applyAutoEnhanceAll();
+      }
+    }
+    if (key === this.SETTINGS.contextToggle || key === this.SETTINGS.autoEnhanceAll || key === this.SETTINGS.enabled) {
+      this.updateSettingVisibility();
+    }
+  }
+  static refreshSettingState() {
+    this.updateSettingVisibility();
+    if (!this.isExtensionEnabled()) {
+      this.disableAllEnhancements();
+      return;
+    }
+    if (this.isAutoEnhanceEnabled()) {
+      this.applyAutoEnhanceAll();
+    }
+  }
+  static handleGlobalEnabledChange(enabled) {
+    if (!enabled) {
+      this.disableAllEnhancements();
+    } else if (this.isAutoEnhanceEnabled()) {
+      this.applyAutoEnhanceAll();
+    }
+  }
+  static updateSettingVisibility() {
+    if (typeof document === "undefined") {
+      return;
+    }
+    this.ensureSettingsStyles();
+    const enabled = this.isExtensionEnabled();
+    const targets = [this.SETTINGS.autoEnhanceAll, this.SETTINGS.contextToggle];
+    for (const id of targets) {
+      const element = this.findSettingElement(id);
+      this.setSettingDisabled(element, !enabled);
+    }
+  }
+  static ensureSettingsStyles() {
+    if (this.settingsStyleInjected || typeof document === "undefined") {
+      return;
+    }
+    try {
+      const style = document.createElement("style");
+      style.id = "nd-super-nodes-settings-styles";
+      style.textContent = `
+        .nd-super-nodes-setting-disabled {
+          opacity: 0.5;
+          pointer-events: none;
+        }
+        .nd-super-nodes-setting-disabled input,
+        .nd-super-nodes-setting-disabled button,
+        .nd-super-nodes-setting-disabled select {
+          pointer-events: none;
+        }
+      `;
+      document.head?.appendChild(style);
+      this.settingsStyleInjected = true;
+    } catch (error) {
+      console.warn("Node Enhancer: failed to inject settings styles", error);
+    }
+  }
+  static findSettingElement(id) {
+    if (typeof document === "undefined") {
+      return null;
+    }
+    const settings = app$1?.ui?.settings;
+    const candidates = [];
+    try {
+      const stored = settings?.settings?.get?.(id)?.element ?? settings?.settings?.[id]?.element;
+      if (stored instanceof HTMLElement) {
+        candidates.push(stored);
+      }
+    } catch {
+    }
+    const selectorCandidates = [
+      `[data-setting-id="${id}"]`,
+      `[data-id="${id}"]`,
+      `[data-setting="${id}"]`,
+      `[data-settingname="${id}"]`,
+      (() => {
+        try {
+          if (typeof window.CSS?.escape === "function") {
+            return `#${window.CSS.escape(id)}`;
+          }
+        } catch {
+        }
+        return null;
+      })()
+    ].filter(Boolean);
+    for (const selector of selectorCandidates) {
+      try {
+        const el = document.querySelector(selector);
+        if (el instanceof HTMLElement) {
+          candidates.push(el);
+        }
+      } catch {
+      }
+    }
+    for (const candidate of candidates) {
+      if (candidate instanceof HTMLElement) {
+        return candidate;
+      }
+    }
+    try {
+      const label = Array.from(document.querySelectorAll("label")).find((node) => node.textContent?.includes(id));
+      if (label && label instanceof HTMLElement) {
+        return label.closest(".setting-item");
+      }
+    } catch {
+    }
+    return null;
+  }
+  static setSettingDisabled(element, disabled) {
+    if (!element) {
+      return;
+    }
+    const className = "nd-super-nodes-setting-disabled";
+    if (disabled) {
+      element.classList.add(className);
+      element.setAttribute("aria-disabled", "true");
+    } else {
+      element.classList.remove(className);
+      element.removeAttribute("aria-disabled");
+    }
+    const inputs = element.querySelectorAll("input, button, select");
+    inputs.forEach((input) => {
+      if (input instanceof HTMLInputElement || input instanceof HTMLButtonElement || input instanceof HTMLSelectElement) {
+        input.disabled = disabled;
+      }
+    });
+  }
+  static applyAutoEnhanceAll() {
+    if (!this.isAutoEnhanceEnabled()) {
+      return;
+    }
+    const graph = window.app?.graph;
+    if (!graph) {
+      return;
+    }
+    const nodes = Array.isArray(graph._nodes) ? graph._nodes : [];
+    nodes.forEach((node) => {
+      if (!node?.type) {
+        return;
+      }
+      const configs = this.ENHANCED_NODES.filter((cfg) => cfg.nodeType === node.type);
+      if (!configs.length) {
+        return;
+      }
+      this.enableConfigsForNode(node, configs);
+    });
+  }
+  static disableAllEnhancements() {
+    const graph = window.app?.graph;
+    if (!graph) {
+      return;
+    }
+    const nodes = Array.isArray(graph._nodes) ? graph._nodes : [];
+    nodes.forEach((node) => {
+      if (!node?.type) {
+        return;
+      }
+      const configs = this.ENHANCED_NODES.filter((cfg) => cfg.nodeType === node.type);
+      if (!configs.length) {
+        return;
+      }
+      this.disableConfigsForNode(node, configs);
+    });
+  }
+  static disableConfigsForNode(node, configs) {
+    if (!node || !Array.isArray(configs) || !configs.length) {
+      return;
+    }
+    let changed = false;
+    for (const config of configs) {
+      if (node.__ndEnhancedWidgets?.[config.widgetName]) {
+        try {
+          this.disableForNode(node, config);
+          changed = true;
+        } catch (error) {
+          console.warn("Node Enhancer: failed to disable config", config, error);
+        }
+      }
+    }
+    if (changed) {
+      this.setNodeFlag(node, false);
+      node.setDirtyCanvas?.(true, true);
+    }
+  }
+  static onGraphConfigured() {
+    if (!this.isExtensionEnabled()) {
+      this.disableAllEnhancements();
+      return;
+    }
+    if (this.isAutoEnhanceEnabled()) {
+      this.applyAutoEnhanceAll();
+    }
   }
   static loadSet(key, sessionFirst = false) {
     try {
@@ -5085,6 +5378,14 @@ _NodeEnhancerExtension.DEBUG = true;
 _NodeEnhancerExtension.NODE_FLAG_KEY = "ndSuperSelectorEnabled";
 _NodeEnhancerExtension.LEGACY_NODE_FLAG_KEY = "ndPowerEnabled";
 _NodeEnhancerExtension.OVERLAY_WIDGET_TYPE = "ndSuperSelectorOverlay";
+_NodeEnhancerExtension.SETTINGS = {
+  enabled: "nodeEnhancer.enabled",
+  autoEnhanceAll: "nodeEnhancer.autoEnhanceAll",
+  contextToggle: "nodeEnhancer.enableContextToggle"
+};
+_NodeEnhancerExtension.settingsHookInitialized = false;
+_NodeEnhancerExtension.suppressSettingSideEffects = false;
+_NodeEnhancerExtension.settingsStyleInjected = false;
 let NodeEnhancerExtension = _NodeEnhancerExtension;
 const EXTENSION_NAME$1 = "NodeEnhancer";
 const EXTENSION_VERSION = "1.0.0";
@@ -5153,12 +5454,13 @@ const nodeEnhancerExtension = {
    * Called when a node is created
    */
   nodeCreated(node) {
-    const autoEnhanceAll = app$1.ui.settings.getSettingValue("nodeEnhancer.autoEnhanceAll", false);
-    if (autoEnhanceAll && node.type) {
+    const enabled = app$1.ui.settings.getSettingValue("nodeEnhancer.enabled", true);
+    const autoEnhanceAll = enabled && app$1.ui.settings.getSettingValue("nodeEnhancer.autoEnhanceAll", false);
+    if (autoEnhanceAll && node?.type) {
       const availableEnhancements = NodeEnhancerExtension.getAvailableEnhancements();
-      const config = availableEnhancements.find((e) => e.nodeType === node.type);
-      if (config) {
-        NodeEnhancerExtension.enableEnhancement(config.nodeType);
+      const hasEnhancement = availableEnhancements.some((e) => e.nodeType === node.type);
+      if (hasEnhancement) {
+        NodeEnhancerExtension.enableEnhancementsForNode(node);
         console.log(`Node Enhancer: Auto-enhanced ${node.type}`);
       }
     }
@@ -5174,6 +5476,7 @@ const nodeEnhancerExtension = {
    */
   afterConfigureGraph(_graphData) {
     console.log("Node Enhancer: Graph configured");
+    NodeEnhancerExtension.onGraphConfigured();
   }
 };
 console.log(`${EXTENSION_NAME$1}: Registering extension with ComfyUI`);

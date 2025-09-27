@@ -88,15 +88,15 @@ const nodeEnhancerExtension: ComfyExtension = {
    */
   nodeCreated(node: any): void {
     // Auto-enhance nodes if setting is enabled
-    const autoEnhanceAll = app.ui.settings.getSettingValue('nodeEnhancer.autoEnhanceAll', false);
+    const enabled = app.ui.settings.getSettingValue('nodeEnhancer.enabled', true);
+    const autoEnhanceAll = enabled && app.ui.settings.getSettingValue('nodeEnhancer.autoEnhanceAll', false);
 
-    if (autoEnhanceAll && node.type) {
-      // Find the enhancement config for this node type
+    if (autoEnhanceAll && node?.type) {
       const availableEnhancements = NodeEnhancerExtension.getAvailableEnhancements();
-      const config = availableEnhancements.find(e => e.nodeType === node.type);
+      const hasEnhancement = availableEnhancements.some(e => e.nodeType === node.type);
 
-      if (config) {
-        NodeEnhancerExtension.enableEnhancement(config.nodeType);
+      if (hasEnhancement) {
+        NodeEnhancerExtension.enableEnhancementsForNode(node);
         console.log(`Node Enhancer: Auto-enhanced ${node.type}`);
       }
     }
@@ -114,6 +114,7 @@ const nodeEnhancerExtension: ComfyExtension = {
    */
   afterConfigureGraph(_graphData: any): void {
     console.log('Node Enhancer: Graph configured');
+    NodeEnhancerExtension.onGraphConfigured();
   }
 };
 
