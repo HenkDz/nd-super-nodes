@@ -1,0 +1,8 @@
+/docs/ export-ignore
+/frontend/ export-ignore
+/.github/ export-ignore
+/nd_super_nodes/ export-ignore
+/release.ps1 export-ignore
+/README.md export-ignore
+/.env export-ignore
+/.gitignore export-ignore

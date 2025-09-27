@@ -5,8 +5,9 @@ CivitAI API integration for automatic trigger word fetching
 import asyncio
 import aiohttp
 import hashlib
-import os
 from typing import Optional, List, Dict, Any
+
+from .lora_utils import resolve_lora_full_path
 
 try:
     import folder_paths
@@ -107,13 +108,10 @@ class CivitAiService:
             return []
             
         try:
-            # Get full path to LoRA file
-            lora_paths = folder_paths.get_filename_list("loras")
-            if lora_filename not in lora_paths:
+            full_path = resolve_lora_full_path(lora_filename)
+            if not full_path:
+                print(f"CivitAI Service: LoRA file '{lora_filename}' not found in configured directories")
                 return []
-            
-            lora_dir = folder_paths.get_folder_paths("loras")[0]
-            full_path = os.path.join(lora_dir, lora_filename)
             
             # Calculate file hash
             file_hash = self._calculate_file_hash(full_path)
