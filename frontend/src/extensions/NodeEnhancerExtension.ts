@@ -114,6 +114,8 @@ export class NodeEnhancerExtension {
   private static settingsHookInitialized = false;
   private static suppressSettingSideEffects = false;
   private static settingsStyleInjected = false;
+  private static extensionLookup: Map<string, string[]> | null = null;
+  private static readonly DEFAULT_LABEL = 'ND Super Selector';
 
   private static debugLog(...args: any[]): void {
     if (this.DEBUG) {
@@ -563,18 +565,30 @@ export class NodeEnhancerExtension {
    * Set up enhancement for a specific node type
    */
   static setup(nodeType: any, nodeData: any): void {
-    const configs = this.ENHANCED_NODES.filter(c => c.nodeType === nodeData.name);
-    if (!configs.length) return;
+    const baseConfigs = this.getBaseConfigsForType(nodeData?.name);
 
     const originalCreate = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function() {
       originalCreate?.apply(this, arguments);
-      if (!this.__ndPowerEnabled) this.__ndPowerEnabled = false;
+      const configs = NodeEnhancerExtension.buildConfigsForNode(this, baseConfigs);
+
+      if (!configs.length) {
+        this.__ndPowerEnabled = false;
+        NodeEnhancerExtension.restoreTitle(this);
+        NodeEnhancerExtension.setNodeFlag(this, false);
+        return;
+      }
+
+      if (typeof this.__ndPowerEnabled === 'undefined') {
+        this.__ndPowerEnabled = false;
+      }
+
       if (typeof this.__ndOriginalTitle === 'undefined') {
         this.__ndOriginalTitle = this.title || this.constructor?.title || '';
       }
+
       if (this.__ndPowerEnabled) {
-        configs.forEach(cfg => NodeEnhancerExtension.enableForNode(this, cfg));
+        NodeEnhancerExtension.enableConfigsForNode(this, configs);
         NodeEnhancerExtension.applyTitleBadge(this);
       } else {
         NodeEnhancerExtension.restoreTitle(this);
@@ -584,6 +598,11 @@ export class NodeEnhancerExtension {
     const originalMenu = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(canvas: any, optionsArr?: any[]) {
       if (!NodeEnhancerExtension.isGloballyEnabled()) {
+        return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
+      }
+
+      const configs = NodeEnhancerExtension.buildConfigsForNode(this, baseConfigs);
+      if (!configs.length) {
         return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
       }
 
@@ -608,13 +627,13 @@ export class NodeEnhancerExtension {
         callback: () => {
           try {
             if (this.__ndPowerEnabled) {
-              configs.forEach(cfg => NodeEnhancerExtension.disableForNode(this, cfg));
+              NodeEnhancerExtension.disableAllForNodeInstance(this, baseConfigs);
               this.__ndPowerEnabled = false;
               NodeEnhancerExtension.restoreTitle(this);
               NodeEnhancerExtension.setNodeFlag(this, false);
               this.setDirtyCanvas?.(true, true);
             } else {
-              NodeEnhancerExtension.enableConfigsForNode(this, configs);
+              NodeEnhancerExtension.enableAllForNodeInstance(this, baseConfigs);
             }
           } catch (error) {
             console.warn('Node Enhancer: toggle failed', error);
@@ -641,6 +660,12 @@ export class NodeEnhancerExtension {
     nodeType.prototype.serialize = function() {
       const data = originalSerialize ? originalSerialize.apply(this, arguments) : {};
       try {
+        const configs = NodeEnhancerExtension.buildConfigsForNode(this, baseConfigs);
+        const hasEnhancements = configs.length > 0 || (this.__ndEnhancedWidgets && Object.keys(this.__ndEnhancedWidgets).length > 0);
+        if (!hasEnhancements) {
+          return data;
+        }
+
         const enabled = !!this.__ndPowerEnabled;
         data.ndSuperSelectorEnabled = enabled;
         data.ndPowerEnabled = enabled;
@@ -687,20 +712,28 @@ export class NodeEnhancerExtension {
       }
       try {
         if (typeof this.__ndPowerEnabled === 'undefined') this.__ndPowerEnabled = false;
+        const configs = NodeEnhancerExtension.buildConfigsForNode(this, baseConfigs);
+        if (!configs.length) {
+          this.__ndPowerEnabled = false;
+          NodeEnhancerExtension.restoreTitle(this);
+          NodeEnhancerExtension.setNodeFlag(this, false);
+          return;
+        }
+
         const shouldEnable = NodeEnhancerExtension.shouldRestoreEnabled(this, data);
 
         if (shouldEnable) {
           if (!this.__ndPowerEnabled) {
             this.__ndPowerEnabled = true;
-            configs.forEach((cfg) => NodeEnhancerExtension.enableForNode(this, cfg));
+            NodeEnhancerExtension.enableConfigsForNode(this, configs);
           }
           NodeEnhancerExtension.applyTitleBadge(this);
         } else if (this.__ndPowerEnabled) {
-          configs.forEach((cfg) => NodeEnhancerExtension.disableForNode(this, cfg));
+          NodeEnhancerExtension.disableConfigsForNode(this, configs);
           this.__ndPowerEnabled = false;
           NodeEnhancerExtension.restoreTitle(this);
         } else {
-          configs.forEach((cfg) => NodeEnhancerExtension.disableForNode(this, cfg));
+          NodeEnhancerExtension.disableConfigsForNode(this, configs);
           NodeEnhancerExtension.restoreTitle(this);
         }
         NodeEnhancerExtension.setNodeFlag(this, !!this.__ndPowerEnabled);
@@ -709,14 +742,25 @@ export class NodeEnhancerExtension {
 
     const originalOnMouseDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function(event: any, pos: any) {
-      const handled = configs.some((cfg) => NodeEnhancerExtension.handleEnhancedMouseDown(this, event, pos, cfg));
+      const activeConfigs = NodeEnhancerExtension.buildConfigsForNode(this, baseConfigs);
+      const fallbackConfigs = activeConfigs.length
+        ? activeConfigs
+        : Object.keys(this.__ndEnhancedWidgets || {})
+            .map((widgetName) => NodeEnhancerExtension.createConfigFromWidget(this, widgetName))
+            .filter((cfg): cfg is EnhancedNodeConfig => !!cfg);
+
+      const handled = fallbackConfigs.some((cfg: EnhancedNodeConfig) =>
+        NodeEnhancerExtension.handleEnhancedMouseDown(this, event, pos, cfg)
+      );
       if (handled) {
         return true;
       }
       return originalOnMouseDown ? originalOnMouseDown.call(this, event, pos) : false;
     };
 
-    console.log(`Node Enhancer: Successfully enhanced ${nodeData.name}`);
+    if (Array.isArray(baseConfigs) && baseConfigs.length) {
+      console.log(`Node Enhancer: Registered ND Super Selector support for ${nodeData?.name}`);
+    }
   }
 
   /**
@@ -736,6 +780,12 @@ export class NodeEnhancerExtension {
     node.__ndPowerEnabled = true;
     node.__ndEnhancedWidgets = node.__ndEnhancedWidgets || {};
     node.__ndEnhancedWidgets[config.widgetName] = node.__ndEnhancedWidgets[config.widgetName] || { original: {} };
+
+    const metaEntry = node.__ndEnhancedWidgets[config.widgetName];
+    metaEntry.fileType = config.fileType;
+    if (config.label) {
+      metaEntry.label = config.label;
+    }
 
     NodeEnhancerExtension.debugLog('Enhancing widget', {
       nodeType: node?.type,
@@ -779,21 +829,53 @@ export class NodeEnhancerExtension {
     }
   }
 
-  static enableEnhancementsForNode(node: any): void {
-    if (!this.isExtensionEnabled()) {
-      return;
+  private static enableAllForNodeInstance(node: any, baseConfigs?: EnhancedNodeConfig[]): boolean {
+    if (!node) {
+      return false;
     }
 
-    if (!node?.type) {
-      return;
-    }
-
-    const configs = this.ENHANCED_NODES.filter(cfg => cfg.nodeType === node.type);
+    const configs = this.buildConfigsForNode(node, baseConfigs);
     if (!configs.length) {
-      return;
+      return false;
     }
 
     this.enableConfigsForNode(node, configs);
+    return true;
+  }
+
+  private static disableAllForNodeInstance(node: any, baseConfigs?: EnhancedNodeConfig[]): void {
+    if (!node) {
+      return;
+    }
+
+    let configs = this.buildConfigsForNode(node, baseConfigs);
+
+    if ((!configs || !configs.length) && node.__ndEnhancedWidgets) {
+      configs = Object.keys(node.__ndEnhancedWidgets)
+        .map((widgetName) => this.createConfigFromWidget(node, widgetName))
+        .filter((cfg): cfg is EnhancedNodeConfig => !!cfg);
+    }
+
+    if (!configs || !configs.length) {
+      node.__ndPowerEnabled = false;
+      NodeEnhancerExtension.restoreTitle(node);
+      this.setNodeFlag(node, false);
+      return;
+    }
+
+    this.disableConfigsForNode(node, configs);
+  }
+
+  static enableEnhancementsForNode(node: any): boolean {
+    if (!this.isExtensionEnabled()) {
+      return false;
+    }
+
+    if (!node?.type) {
+      return false;
+    }
+
+    return this.enableAllForNodeInstance(node);
   }
 
   /** Disable enhancement for a specific node instance */
@@ -938,15 +1020,19 @@ export class NodeEnhancerExtension {
   static getAvailableEnhancements(): EnhancedNodeConfig[] { return this.ENHANCED_NODES; }
 
   static enableEnhancement(nodeTypeName: string): void {
-    if (!this.isExtensionEnabled()) return;
-    const configs = this.ENHANCED_NODES.filter(cfg => cfg.nodeType === nodeTypeName);
-    if (!configs.length) return;
+    if (!this.isExtensionEnabled()) {
+      return;
+    }
+
     const graph = (window as any).app?.graph;
-    if (!graph) return;
+    if (!graph) {
+      return;
+    }
+
     (graph._nodes || []).forEach((node: any) => {
       if (node?.type === nodeTypeName) {
         try {
-          this.enableConfigsForNode(node, configs);
+          this.enableAllForNodeInstance(node);
         } catch (error) {
           console.warn('Node Enhancer: failed to enable node', node, error);
         }
@@ -1177,11 +1263,7 @@ export class NodeEnhancerExtension {
       if (!node?.type) {
         return;
       }
-      const configs = this.ENHANCED_NODES.filter(cfg => cfg.nodeType === node.type);
-      if (!configs.length) {
-        return;
-      }
-      this.enableConfigsForNode(node, configs);
+      this.enableAllForNodeInstance(node);
     });
   }
 
@@ -1196,22 +1278,30 @@ export class NodeEnhancerExtension {
       if (!node?.type) {
         return;
       }
-      const configs = this.ENHANCED_NODES.filter(cfg => cfg.nodeType === node.type);
-      if (!configs.length) {
-        return;
-      }
-      this.disableConfigsForNode(node, configs);
+      this.disableAllForNodeInstance(node);
     });
   }
 
   private static disableConfigsForNode(node: any, configs: EnhancedNodeConfig[]): void {
-    if (!node || !Array.isArray(configs) || !configs.length) {
+    if (!node) {
+      return;
+    }
+
+    let targets = Array.isArray(configs) ? configs : [];
+
+    if ((!targets || !targets.length) && node.__ndEnhancedWidgets) {
+      targets = Object.keys(node.__ndEnhancedWidgets)
+        .map((widgetName) => this.createConfigFromWidget(node, widgetName))
+        .filter((cfg): cfg is EnhancedNodeConfig => !!cfg);
+    }
+
+    if (!targets || !targets.length) {
       return;
     }
 
     let changed = false;
 
-    for (const config of configs) {
+    for (const config of targets) {
       if (node.__ndEnhancedWidgets?.[config.widgetName]) {
         try {
           this.disableForNode(node, config);
@@ -1223,6 +1313,7 @@ export class NodeEnhancerExtension {
     }
 
     if (changed) {
+      node.__ndPowerEnabled = false;
       this.setNodeFlag(node, false);
       node.setDirtyCanvas?.(true, true);
     }
@@ -1237,6 +1328,394 @@ export class NodeEnhancerExtension {
     if (this.isAutoEnhanceEnabled()) {
       this.applyAutoEnhanceAll();
     }
+  }
+
+  private static getBaseConfigsForType(nodeTypeName: string): EnhancedNodeConfig[] {
+    if (typeof nodeTypeName !== 'string' || !nodeTypeName) {
+      return [];
+    }
+
+    return this.ENHANCED_NODES
+      .filter((cfg) => cfg.nodeType === nodeTypeName)
+      .map((cfg) => ({ ...cfg }));
+  }
+
+  private static buildConfigsForNode(node: any, baseConfigs?: EnhancedNodeConfig[]): EnhancedNodeConfig[] {
+    if (!node) {
+      return [];
+    }
+
+    const base = Array.isArray(baseConfigs)
+      ? baseConfigs.map((cfg) => ({ ...cfg }))
+      : this.getBaseConfigsForType(node.type);
+
+    const dynamic = this.detectFileWidgets(node);
+    return this.mergeConfigLists(base, dynamic);
+  }
+
+  private static mergeConfigLists(base: EnhancedNodeConfig[], extras: EnhancedNodeConfig[]): EnhancedNodeConfig[] {
+    const map = new Map<string, EnhancedNodeConfig>();
+
+    (base || []).forEach((cfg) => {
+      if (cfg?.widgetName) {
+        map.set(cfg.widgetName, { ...cfg });
+      }
+    });
+
+    (extras || []).forEach((cfg) => {
+      if (cfg?.widgetName && !map.has(cfg.widgetName)) {
+        map.set(cfg.widgetName, { ...cfg });
+      }
+    });
+
+    return Array.from(map.values());
+  }
+
+  private static createConfigFromWidget(node: any, widgetName: string): EnhancedNodeConfig | null {
+    if (!node || typeof widgetName !== 'string' || !widgetName) {
+      return null;
+    }
+
+    const meta = node.__ndEnhancedWidgets?.[widgetName];
+    const widget = Array.isArray(node.widgets)
+      ? node.widgets.find((w: any) => w && w.name === widgetName)
+      : null;
+
+    let fileType: string | null = null;
+    if (meta && typeof meta.fileType === 'string' && meta.fileType) {
+      fileType = meta.fileType;
+    } else if (widget) {
+      const guessed = this.guessFileType(node, widget);
+      if (guessed) {
+        fileType = guessed;
+      }
+    }
+
+    if (!fileType) {
+      return null;
+    }
+
+    const label = (meta && typeof meta.label === 'string' && meta.label)
+      || this.buildAutoLabel(widgetName, fileType);
+
+    return {
+      nodeType: node.type,
+      fileType,
+      widgetName,
+      label
+    };
+  }
+
+  private static detectFileWidgets(node: any): EnhancedNodeConfig[] {
+    if (!node || !Array.isArray(node.widgets) || !node.widgets.length) {
+      return [];
+    }
+
+    const results: EnhancedNodeConfig[] = [];
+
+    for (const widget of node.widgets) {
+      if (!this.isWidgetEligibleForAutoDetection(node, widget)) {
+        continue;
+      }
+
+      const widgetName = typeof widget?.name === 'string'
+        ? widget.name
+        : typeof widget?.label === 'string'
+          ? widget.label
+          : null;
+
+      if (!widgetName) {
+        continue;
+      }
+
+      const fileType = this.guessFileType(node, widget);
+      if (!fileType) {
+        continue;
+      }
+
+      results.push({
+        nodeType: node.type,
+        fileType,
+        widgetName,
+        label: this.buildAutoLabel(widgetName, fileType)
+      });
+    }
+
+    return results;
+  }
+
+  private static isWidgetEligibleForAutoDetection(node: any, widget: any): boolean {
+    if (!widget || typeof widget !== 'object') {
+      return false;
+    }
+
+    if (widget.__ndOverlay) {
+      return false;
+    }
+
+    if (widget.type && typeof widget.type === 'string') {
+      const typeLower = widget.type.toLowerCase();
+      if (typeLower !== 'combo' && typeLower !== 'text' && typeLower !== 'string') {
+        return false;
+      }
+    }
+
+    const stringValues = this.extractStringValues(widget);
+    if (!stringValues.length) {
+      return false;
+    }
+
+    const hasFileLikeValue = stringValues.some((value) => this.isFileishValue(value));
+    if (!hasFileLikeValue) {
+      return false;
+    }
+
+    const widgetName = typeof widget?.name === 'string' ? widget.name : '';
+    if (node?.__ndEnhancedWidgets && widgetName && node.__ndEnhancedWidgets[widgetName]) {
+      return true;
+    }
+
+    return true;
+  }
+
+  private static extractStringValues(widget: any): string[] {
+    const result: string[] = [];
+    if (!widget) {
+      return result;
+    }
+
+    const values = widget.options?.values;
+
+    if (Array.isArray(values)) {
+      for (const entry of values) {
+        if (typeof entry === 'string') {
+          result.push(entry);
+        } else if (entry && typeof entry === 'object') {
+          if (typeof entry.value === 'string') {
+            result.push(entry.value);
+          }
+          if (typeof entry.name === 'string') {
+            result.push(entry.name);
+          }
+          if (typeof entry.label === 'string') {
+            result.push(entry.label);
+          }
+        }
+      }
+    } else if (values && typeof values === 'object') {
+      for (const [key, value] of Object.entries(values)) {
+        if (typeof key === 'string') {
+          result.push(key);
+        }
+        if (typeof value === 'string') {
+          result.push(value);
+        }
+      }
+    }
+
+    if (typeof widget.value === 'string') {
+      result.push(widget.value);
+    }
+
+    return result
+      .filter((entry): entry is string => typeof entry === 'string' && !!entry)
+      .filter((entry, index, arr) => arr.indexOf(entry) === index);
+  }
+
+  private static isFileishValue(value: string): boolean {
+    if (typeof value !== 'string' || !value.trim()) {
+      return false;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed.toLowerCase() === 'none') {
+      return false;
+    }
+
+    if (/[\\/]/.test(trimmed)) {
+      return true;
+    }
+
+    return /\.[a-z0-9]{2,5}(?:\s|$)/i.test(trimmed);
+  }
+
+  private static guessFileType(node: any, widget: any): string | null {
+    const widgetName = typeof widget?.name === 'string' ? widget.name : '';
+    const nodeType = typeof node?.type === 'string' ? node.type : '';
+    const values = this.extractStringValues(widget);
+
+    const byValues = this.guessFileTypeFromValues(values, widgetName, nodeType);
+    if (byValues) {
+      return byValues;
+    }
+
+    return this.guessFileTypeFromHints(widgetName, nodeType);
+  }
+
+  private static guessFileTypeFromValues(values: string[], widgetName: string, nodeType: string): string | null {
+    if (!Array.isArray(values) || !values.length) {
+      return null;
+    }
+
+    const lowered = values
+      .map((value) => (typeof value === 'string' ? value.toLowerCase() : ''))
+      .filter(Boolean);
+
+    if (!lowered.length) {
+      return null;
+    }
+
+    const includes = (keyword: string) => lowered.some((val) => val.includes(keyword));
+
+    if (includes('loras/') || includes('loras\\') || includes('/lora/') || includes('\\lora\\')) {
+      return 'loras';
+    }
+
+    if (includes('/vae') || includes('\\vae') || includes('/autoencoder') || includes('vae/')) {
+      return 'vae';
+    }
+
+    if (includes('/clip') || includes('text_encoder') || includes('text-encoder')) {
+      return 'text_encoders';
+    }
+
+    if (includes('controlnet') || includes('control_net')) {
+      return 'controlnet';
+    }
+
+    if (includes('/unet') || includes('\\unet') || includes('diffusion')) {
+      return lowered.some((val) => val.endsWith('.gguf')) ? 'gguf_unet_models' : 'diffusion_models';
+    }
+
+    if (includes('upscale')) {
+      return 'upscale_models';
+    }
+
+    const lookup = this.getExtensionLookup();
+    for (const entry of lowered) {
+      const ext = this.extractExtension(entry);
+      if (!ext) {
+        continue;
+      }
+
+      const candidates = lookup.get(ext);
+      if (!candidates || !candidates.length) {
+        continue;
+      }
+
+      if (candidates.length === 1) {
+        return candidates[0];
+      }
+
+      const hint = this.guessFileTypeFromHints(widgetName, nodeType);
+      if (hint && candidates.includes(hint)) {
+        return hint;
+      }
+
+      if (ext === '.gguf') {
+        if (candidates.includes('text_encoders') && (entry.includes('clip') || entry.includes('text') || widgetName.toLowerCase().includes('clip'))) {
+          return 'text_encoders';
+        }
+        if (candidates.includes('gguf_unet_models')) {
+          return 'gguf_unet_models';
+        }
+      }
+
+      if (candidates.includes('models')) {
+        return 'models';
+      }
+    }
+
+    return null;
+  }
+
+  private static guessFileTypeFromHints(widgetName: string, nodeType: string): string | null {
+    const hints = [widgetName, nodeType]
+      .filter((value): value is string => typeof value === 'string' && !!value)
+      .map((value) => value.toLowerCase());
+
+    if (!hints.length) {
+      return null;
+    }
+
+    const includes = (keyword: string) => hints.some((hint) => hint.includes(keyword));
+
+    if (includes('lora')) {
+      return 'loras';
+    }
+    if (includes('controlnet')) {
+      return 'controlnet';
+    }
+    if (includes('vae')) {
+      return 'vae';
+    }
+    if (includes('clip') || includes('text_encoder')) {
+      return 'text_encoders';
+    }
+    if (includes('gguf')) {
+      if (includes('clip')) {
+        return 'text_encoders';
+      }
+      return 'gguf_unet_models';
+    }
+    if (includes('unet') || includes('diffusion')) {
+      return 'diffusion_models';
+    }
+    if (includes('upscale')) {
+      return 'upscale_models';
+    }
+    if (includes('checkpoint') || includes('ckpt') || includes('model')) {
+      return 'models';
+    }
+
+    return null;
+  }
+
+  private static getExtensionLookup(): Map<string, string[]> {
+    if (this.extensionLookup) {
+      return this.extensionLookup;
+    }
+
+    const lookup = new Map<string, string[]>();
+
+    try {
+      const fileTypes = FilePickerService.getSupportedFileTypes();
+      Object.entries(fileTypes).forEach(([fileType, config]) => {
+        (config?.fileExtensions || []).forEach((ext) => {
+          if (typeof ext !== 'string') {
+            return;
+          }
+          const normalized = ext.toLowerCase();
+          const existing = lookup.get(normalized) || [];
+          if (!existing.includes(fileType)) {
+            existing.push(fileType);
+          }
+          lookup.set(normalized, existing);
+        });
+      });
+    } catch (error) {
+      console.warn('Node Enhancer: failed to build extension lookup', error);
+    }
+
+    this.extensionLookup = lookup;
+    return lookup;
+  }
+
+  private static extractExtension(value: string): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+
+    const match = value.match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
+    if (!match) {
+      return null;
+    }
+
+    return `.${match[1].toLowerCase()}`;
+  }
+
+  private static buildAutoLabel(_widgetName: string, _fileType: string): string {
+    return this.DEFAULT_LABEL;
   }
 
   private static loadSet(key: string, sessionFirst = false): Set<string> {

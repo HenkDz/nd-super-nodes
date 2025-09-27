@@ -16,16 +16,72 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: version_check
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+
+          VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
+
+          def extract_version_from_text(text):
+              match = VERSION_PATTERN.search(text)
+              return match.group(1) if match else None
+
+          def extract_version_from_ref(ref):
+              try:
+                  content = subprocess.check_output(['git', 'show', f'{ref}:pyproject.toml'], text=True)
+              except subprocess.CalledProcessError:
+                  return None
+              return extract_version_from_text(content)
+
+          with open('pyproject.toml', encoding='utf-8') as current_file:
+              current_content = current_file.read()
+
+          current_version = extract_version_from_text(current_content)
+          previous_version = extract_version_from_ref('HEAD^')
+
+          version_changed = False
+          if current_version:
+              if previous_version is None:
+                  version_changed = True
+              elif previous_version != current_version:
+                  version_changed = True
+
+          github_output = os.environ.get('GITHUB_OUTPUT')
+          if github_output:
+              with open(github_output, 'a', encoding='utf-8') as output_file:
+                  output_file.write(f"version_changed={'true' if version_changed else 'false'}\n")
+
+          if version_changed:
+              print(f"Detected version change: {previous_version} -> {current_version}")
+          else:
+              if previous_version is None and current_version is None:
+                  print('No version information found; skipping publish.')
+              else:
+                  print(f"No version change detected (still {current_version}).")
+
+      - name: Skip publish (version unchanged)
+        if: steps.version_check.outputs.version_changed != 'true'
+        run: echo "Version unchanged; skipping publish."
 
       - name: Install patched comfy-cli
+        if: steps.version_check.outputs.version_changed == 'true'
         run: pip install --upgrade git+https://github.com/HenkDz/comfy-cli@main
 
       - name: Set up Python
+        if: steps.version_check.outputs.version_changed == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Publish Node
+        if: steps.version_check.outputs.version_changed == 'true'
         run: |
           comfy --skip-prompt --no-enable-telemetry env
           comfy node publish --token ${{ secrets.REGISTRY_ACCESS_TOKEN }}

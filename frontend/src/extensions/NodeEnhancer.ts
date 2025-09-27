@@ -92,11 +92,9 @@ const nodeEnhancerExtension: ComfyExtension = {
     const autoEnhanceAll = enabled && app.ui.settings.getSettingValue('nodeEnhancer.autoEnhanceAll', false);
 
     if (autoEnhanceAll && node?.type) {
-      const availableEnhancements = NodeEnhancerExtension.getAvailableEnhancements();
-      const hasEnhancement = availableEnhancements.some(e => e.nodeType === node.type);
+      const applied = NodeEnhancerExtension.enableEnhancementsForNode(node);
 
-      if (hasEnhancement) {
-        NodeEnhancerExtension.enableEnhancementsForNode(node);
+      if (applied) {
         console.log(`Node Enhancer: Auto-enhanced ${node.type}`);
       }
     }
