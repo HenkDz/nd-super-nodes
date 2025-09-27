@@ -5,6 +5,7 @@
  */
 
 import { OverlayService } from '@/services/OverlayService';
+import { LoraService } from '@/services/LoraService';
 
 export interface FileTypeConfig {
   folderName: string;           // ComfyUI folder name (e.g., "checkpoints", "vae", "loras")
@@ -29,6 +30,25 @@ export class FilePickerService {
   private static instance: FilePickerService;
   private fileCache: Map<string, FileItem[]> = new Map();
   private cacheTimestamps: Map<string, number> = new Map();
+  private static readonly REFRESH_DEBOUNCE_MS = 400;
+  private lastRefreshTimestamp = 0;
+  private pendingLoraRefresh: Promise<void> | null = null;
+  private readonly handleGlobalKeyDown = (event: KeyboardEvent) => {
+    if (!this.isRefreshHotkey(event)) {
+      return;
+    }
+    this.onExternalRefresh('hotkey:R');
+  };
+  private readonly handleManualRefreshEvent: EventListener = () => {
+    this.onExternalRefresh('event:nd-super-nodes:refresh-files');
+  };
+
+  private constructor() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    this.setupGlobalRefreshListeners();
+  }
 
   // Supported file types
   private static readonly FILE_TYPES: Record<string, FileTypeConfig> = {
@@ -95,6 +115,175 @@ export class FilePickerService {
       FilePickerService.instance = new FilePickerService();
     }
     return FilePickerService.instance;
+  }
+
+  private setupGlobalRefreshListeners(): void {
+    try {
+      if (typeof document !== 'undefined' && document.addEventListener) {
+        document.addEventListener('keydown', this.handleGlobalKeyDown, true);
+      }
+
+      window.addEventListener('nd-super-nodes:refresh-files', this.handleManualRefreshEvent);
+    } catch (error) {
+      console.warn('ND Super Nodes: failed to attach refresh listeners', error);
+    }
+
+    this.tryHookComfyRefreshFunctions();
+  }
+
+  private tryHookComfyRefreshFunctions(attempt = 0): void {
+    const hooked =
+      this.patchRefreshFunctions((window as any)?.app, 'app') ||
+      this.patchRefreshFunctions((window as any)?.api, 'api') ||
+      this.patchRefreshFunctions((window as any)?.ui, 'ui');
+
+    if (hooked || attempt >= 20) {
+      return;
+    }
+
+    setTimeout(() => this.tryHookComfyRefreshFunctions(attempt + 1), 250 * Math.max(1, attempt + 1));
+  }
+
+  private patchRefreshFunctions(source: any, sourceName: string): boolean {
+    if (!source || typeof source !== 'object') {
+      return false;
+    }
+
+    const marker = '__ndSuperNodesRefreshWrapped';
+    const service = this;
+    const seen = new Set<string>();
+    let hookedAny = false;
+
+    let cursor: any = source;
+    while (cursor && cursor !== Object.prototype && cursor !== Function.prototype) {
+      const keys = Object.getOwnPropertyNames(cursor);
+      for (const key of keys) {
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        if (!/refresh/i.test(key) || key === marker) {
+          continue;
+        }
+
+        const original = (source as any)[key];
+        if (typeof original !== 'function' || original[marker]) {
+          continue;
+        }
+
+        const wrapped = function(this: any, ...args: any[]) {
+          try {
+            service.onExternalRefresh(`${sourceName}.${key}`);
+          } catch (error) {
+            console.warn('ND Super Nodes: refresh hook error', error);
+          }
+          return original.apply(this, args);
+        };
+        (wrapped as any)[marker] = true;
+
+        const descriptor = Object.getOwnPropertyDescriptor(source, key);
+        if (descriptor && 'value' in descriptor) {
+          Object.defineProperty(source, key, {
+            ...descriptor,
+            value: wrapped,
+          });
+        } else {
+          (source as any)[key] = wrapped;
+        }
+
+        hookedAny = true;
+      }
+      cursor = Object.getPrototypeOf(cursor);
+    }
+
+    return hookedAny;
+  }
+
+  private isRefreshHotkey(event: KeyboardEvent): boolean {
+    if (!event || event.repeat) {
+      return false;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return false;
+    }
+
+    const key = event.key?.toLowerCase();
+    if (key !== 'r') {
+      return false;
+    }
+
+    const target = event.target as EventTarget | null;
+    if (this.isInteractiveElement(target)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private isInteractiveElement(target: EventTarget | null): boolean {
+    if (!target || typeof window === 'undefined') {
+      return false;
+    }
+
+    if (target instanceof HTMLElement) {
+      if (target.isContentEditable) {
+        return true;
+      }
+
+      const interactiveTags = ['INPUT', 'TEXTAREA', 'SELECT'];
+      if (interactiveTags.includes(target.tagName)) {
+        return true;
+      }
+
+      const role = target.getAttribute?.('role');
+      if (role && ['textbox', 'combobox', 'searchbox'].includes(role)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private onExternalRefresh(trigger: string): void {
+    const now = Date.now();
+    if (now - this.lastRefreshTimestamp < FilePickerService.REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+    this.lastRefreshTimestamp = now;
+
+    this.clearCache();
+    this.triggerLinkedServiceRefresh();
+
+    try {
+      window.dispatchEvent(new CustomEvent('nd-super-nodes:files-refreshed', { detail: { trigger } }));
+    } catch (error) {
+      // Intentionally ignored: overlay event dispatch failures are non-critical
+      // Uncomment below for debug logging if needed
+      // console.debug('ND Super Nodes: files-refreshed event dispatch error', error);
+    }
+  }
+
+  private triggerLinkedServiceRefresh(): void {
+    try {
+      const loraService = LoraService.getInstance();
+      if (!loraService || typeof loraService.refreshLoraList !== 'function') {
+        return;
+      }
+
+      if (this.pendingLoraRefresh) {
+        return;
+      }
+
+      this.pendingLoraRefresh = Promise.resolve(loraService.refreshLoraList())
+        .catch((error) => {
+          console.warn('ND Super Nodes: Failed to refresh LoRA list after global refresh', error);
+        })
+        .finally(() => {
+          this.pendingLoraRefresh = null;
+        });
+    } catch (error) {
+      console.warn('ND Super Nodes: LoRA refresh hook failed', error);
+    }
   }
 
   static getSupportedFileTypes(): Record<string, FileTypeConfig> {

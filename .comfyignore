@@ -1,0 +1,13 @@
+# Exclude development and documentation assets from Comfy registry packages
+
+.docs/
+/docs/
+/frontend/
+/.github/
+/nd_super_nodes/
+/tests/
+release.ps1
+README.md
+.gitattributes
+.gitignore
+.env

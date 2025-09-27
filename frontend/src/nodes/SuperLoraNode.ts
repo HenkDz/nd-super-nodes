@@ -10,6 +10,7 @@ import { CivitAiService } from '@/services/CivitAiService';
 import { TagSetService } from '@/services/TagSetService';
 import { OverlayService } from '@/services/OverlayService';
 import { UpdateService } from '@/services/UpdateService';
+import { FilePickerService } from '@/services/FilePickerService';
 // import { SuperLoraBaseWidget } from './widgets/SuperLoraBaseWidget';
 import { SuperLoraHeaderWidget } from './widgets/SuperLoraHeaderWidget';
 import { SuperLoraTagWidget } from './widgets/SuperLoraTagWidget';
@@ -48,6 +49,7 @@ export class SuperLoraNode {
       this.templateService = TemplateService.getInstance();
       this.civitaiService = CivitAiService.getInstance();
   this.updateService = UpdateService.getInstance();
+  FilePickerService.getInstance();
 
       // Bridge internal helpers/services to widgets via WidgetAPI immediately
       setWidgetAPI({

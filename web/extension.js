@@ -1581,6 +1581,363 @@ class UpdateService {
     }
   }
 }
+const _FilePickerService = class _FilePickerService {
+  constructor() {
+    this.fileCache = /* @__PURE__ */ new Map();
+    this.cacheTimestamps = /* @__PURE__ */ new Map();
+    this.lastRefreshTimestamp = 0;
+    this.pendingLoraRefresh = null;
+    this.handleGlobalKeyDown = (event) => {
+      if (!this.isRefreshHotkey(event)) {
+        return;
+      }
+      this.onExternalRefresh("hotkey:R");
+    };
+    this.handleManualRefreshEvent = () => {
+      this.onExternalRefresh("event:nd-super-nodes:refresh-files");
+    };
+    if (typeof window === "undefined") {
+      return;
+    }
+    this.setupGlobalRefreshListeners();
+  }
+  static getInstance() {
+    if (!_FilePickerService.instance) {
+      _FilePickerService.instance = new _FilePickerService();
+    }
+    return _FilePickerService.instance;
+  }
+  setupGlobalRefreshListeners() {
+    try {
+      if (typeof document !== "undefined" && document.addEventListener) {
+        document.addEventListener("keydown", this.handleGlobalKeyDown, true);
+      }
+      window.addEventListener("nd-super-nodes:refresh-files", this.handleManualRefreshEvent);
+    } catch (error) {
+      console.warn("ND Super Nodes: failed to attach refresh listeners", error);
+    }
+    this.tryHookComfyRefreshFunctions();
+  }
+  tryHookComfyRefreshFunctions(attempt = 0) {
+    const hooked = this.patchRefreshFunctions(window?.app, "app") || this.patchRefreshFunctions(window?.api, "api") || this.patchRefreshFunctions(window?.ui, "ui");
+    if (hooked || attempt >= 20) {
+      return;
+    }
+    setTimeout(() => this.tryHookComfyRefreshFunctions(attempt + 1), 250 * Math.max(1, attempt + 1));
+  }
+  patchRefreshFunctions(source, sourceName) {
+    if (!source || typeof source !== "object") {
+      return false;
+    }
+    const marker = "__ndSuperNodesRefreshWrapped";
+    const service = this;
+    const seen = /* @__PURE__ */ new Set();
+    let hookedAny = false;
+    let cursor = source;
+    while (cursor && cursor !== Object.prototype && cursor !== Function.prototype) {
+      const keys = Object.getOwnPropertyNames(cursor);
+      for (const key of keys) {
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        if (!/refresh/i.test(key) || key === marker) {
+          continue;
+        }
+        const original = source[key];
+        if (typeof original !== "function" || original[marker]) {
+          continue;
+        }
+        const wrapped = function(...args) {
+          try {
+            service.onExternalRefresh(`${sourceName}.${key}`);
+          } catch (error) {
+            console.warn("ND Super Nodes: refresh hook error", error);
+          }
+          return original.apply(this, args);
+        };
+        wrapped[marker] = true;
+        const descriptor = Object.getOwnPropertyDescriptor(source, key);
+        if (descriptor && "value" in descriptor) {
+          Object.defineProperty(source, key, {
+            ...descriptor,
+            value: wrapped
+          });
+        } else {
+          source[key] = wrapped;
+        }
+        hookedAny = true;
+      }
+      cursor = Object.getPrototypeOf(cursor);
+    }
+    return hookedAny;
+  }
+  isRefreshHotkey(event) {
+    if (!event || event.repeat) {
+      return false;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return false;
+    }
+    const key = event.key?.toLowerCase();
+    if (key !== "r") {
+      return false;
+    }
+    const target = event.target;
+    if (this.isInteractiveElement(target)) {
+      return false;
+    }
+    return true;
+  }
+  isInteractiveElement(target) {
+    if (!target || typeof window === "undefined") {
+      return false;
+    }
+    if (target instanceof HTMLElement) {
+      if (target.isContentEditable) {
+        return true;
+      }
+      const interactiveTags = ["INPUT", "TEXTAREA", "SELECT"];
+      if (interactiveTags.includes(target.tagName)) {
+        return true;
+      }
+      const role = target.getAttribute?.("role");
+      if (role && ["textbox", "combobox", "searchbox"].includes(role)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  onExternalRefresh(trigger) {
+    const now = Date.now();
+    if (now - this.lastRefreshTimestamp < _FilePickerService.REFRESH_DEBOUNCE_MS) {
+      return;
+    }
+    this.lastRefreshTimestamp = now;
+    this.clearCache();
+    this.triggerLinkedServiceRefresh();
+    try {
+      window.dispatchEvent(new CustomEvent("nd-super-nodes:files-refreshed", { detail: { trigger } }));
+    } catch {
+    }
+  }
+  triggerLinkedServiceRefresh() {
+    try {
+      const loraService = LoraService.getInstance();
+      if (!loraService || typeof loraService.refreshLoraList !== "function") {
+        return;
+      }
+      if (this.pendingLoraRefresh) {
+        return;
+      }
+      this.pendingLoraRefresh = Promise.resolve(loraService.refreshLoraList()).catch((error) => {
+        console.warn("ND Super Nodes: Failed to refresh LoRA list after global refresh", error);
+      }).finally(() => {
+        this.pendingLoraRefresh = null;
+      });
+    } catch (error) {
+      console.warn("ND Super Nodes: LoRA refresh hook failed", error);
+    }
+  }
+  static getSupportedFileTypes() {
+    return this.FILE_TYPES;
+  }
+  /**
+   * Get files for a specific file type
+   */
+  async getFilesForType(fileType) {
+    const config = _FilePickerService.FILE_TYPES[fileType];
+    if (!config) {
+      throw new Error(`Unknown file type: ${fileType}`);
+    }
+    const cacheKey = `files_${fileType}`;
+    const cached = this.getCachedFiles(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    try {
+      const params = new URLSearchParams();
+      params.set("folder_name", config.folderName);
+      params.set("extensions", config.fileExtensions.join(","));
+      let response = await fetch(`/super_lora/files?${params.toString()}`, { method: "GET" });
+      if (!response.ok) {
+        response = await fetch(`/superlora/files?${params.toString()}`, { method: "GET" });
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to fetch files: ${response.statusText}`);
+      }
+      const data = await response.json();
+      const files = data.files?.map((file) => {
+        const relativePath = file.relative_path || file.path;
+        return {
+          id: relativePath,
+          label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft|gguf)$/i, ""),
+          path: relativePath,
+          fullPath: file.path,
+          filename: file.name,
+          extension: file.extension || "",
+          size: file.size,
+          modified: file.modified
+        };
+      }) || [];
+      this.setCachedFiles(cacheKey, files);
+      return files;
+    } catch (error) {
+      console.error(`Error fetching ${fileType} files:`, error);
+      return [];
+    }
+  }
+  /**
+   * Show enhanced file picker overlay
+   */
+  showFilePicker(fileType, onSelect, options = {}) {
+    const config = _FilePickerService.FILE_TYPES[fileType];
+    if (!config) {
+      throw new Error(`Unknown file type: ${fileType}`);
+    }
+    const {
+      title = `Select ${config.displayName}`,
+      multiSelect = false,
+      onMultiSelect,
+      currentValue
+    } = options;
+    this.getFilesForType(fileType).then((files) => {
+      const items = files.map((file) => ({
+        id: file.id,
+        label: file.label,
+        disabled: currentValue === file.id
+      }));
+      const overlay = OverlayService.getInstance();
+      const topFolders = Array.from(new Set(
+        files.map((file) => {
+          const rel = file.path || "";
+          const parts = rel.split(/[\\/]/);
+          return parts.length > 1 ? parts[0] : "__ROOT__";
+        })
+      ));
+      overlay.showSearchOverlay({
+        title,
+        placeholder: config.placeholder || `Search ${config.displayName.toLowerCase()}...`,
+        items,
+        allowCreate: false,
+        enableMultiToggle: multiSelect,
+        onChoose: (id) => {
+          const file = files.find((f) => f.id === id);
+          if (file) {
+            onSelect(file);
+          }
+        },
+        onChooseMany: onMultiSelect ? (ids) => {
+          const selectedFiles = ids.map((id) => files.find((f) => f.id === id)).filter(Boolean);
+          if (onMultiSelect && selectedFiles.length > 0) {
+            onMultiSelect(selectedFiles);
+          }
+        } : void 0,
+        folderChips: topFolders,
+        baseFolderName: config.folderName,
+        currentValue,
+        rightActions: []
+      });
+    }).catch((error) => {
+      console.error("Failed to load file picker:", error);
+      OverlayService.getInstance().showToast(`Failed to load ${config.displayName.toLowerCase()}`, "error");
+    });
+  }
+  /**
+   * Cache management
+   */
+  getCachedFiles(key) {
+    const cacheTime = this.cacheTimestamps.get(key);
+    if (!cacheTime) return null;
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1e3;
+    if (cacheTime < fiveMinutesAgo) {
+      this.fileCache.delete(key);
+      this.cacheTimestamps.delete(key);
+      return null;
+    }
+    return this.fileCache.get(key) || null;
+  }
+  setCachedFiles(key, files) {
+    this.fileCache.set(key, files);
+    this.cacheTimestamps.set(key, Date.now());
+  }
+  /**
+   * Clear all caches
+   */
+  clearCache() {
+    this.fileCache.clear();
+    this.cacheTimestamps.clear();
+  }
+  /**
+   * Refresh cache for specific file type
+   */
+  async refreshFileType(fileType) {
+    const cacheKey = `files_${fileType}`;
+    this.fileCache.delete(cacheKey);
+    this.cacheTimestamps.delete(cacheKey);
+    await this.getFilesForType(fileType);
+  }
+};
+_FilePickerService.REFRESH_DEBOUNCE_MS = 400;
+_FilePickerService.FILE_TYPES = {
+  models: {
+    folderName: "checkpoints",
+    displayName: "Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🏗️",
+    placeholder: "Search models..."
+  },
+  vae: {
+    folderName: "vae",
+    displayName: "VAEs",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🎨",
+    placeholder: "Search VAEs..."
+  },
+  loras: {
+    folderName: "loras",
+    displayName: "LoRAs",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🏷️",
+    placeholder: "Search LoRAs..."
+  },
+  text_encoders: {
+    folderName: "text_encoders",
+    displayName: "Text Encoders",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "📝",
+    placeholder: "Search text encoders..."
+  },
+  diffusion_models: {
+    folderName: "diffusion_models",
+    displayName: "Diffusion Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🧠",
+    placeholder: "Search diffusion models..."
+  },
+  gguf_unet_models: {
+    folderName: "unet",
+    displayName: "UNET GGUF Models",
+    fileExtensions: [".gguf"],
+    icon: "🧠",
+    placeholder: "Search GGUF UNET models..."
+  },
+  controlnet: {
+    folderName: "controlnet",
+    displayName: "ControlNets",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🎛️",
+    placeholder: "Search ControlNets..."
+  },
+  upscale_models: {
+    folderName: "upscale_models",
+    displayName: "Upscale Models",
+    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
+    icon: "🔍",
+    placeholder: "Search upscale models..."
+  }
+};
+let FilePickerService = _FilePickerService;
 class SuperLoraBaseWidget {
   constructor(name) {
     this.name = name;
@@ -2793,6 +3150,7 @@ const _SuperLoraNode = class _SuperLoraNode {
       this.templateService = TemplateService.getInstance();
       this.civitaiService = CivitAiService.getInstance();
       this.updateService = UpdateService.getInstance();
+      FilePickerService.getInstance();
       setWidgetAPI({
         showLoraSelector: (node, widget, e) => _SuperLoraNode.showLoraSelector(node, widget, e),
         showTagSelector: (node, widget) => _SuperLoraNode.showTagSelector(node, widget),
@@ -3908,215 +4266,6 @@ _SuperLoraNode.templateService = TemplateService.getInstance();
 _SuperLoraNode.initialized = false;
 _SuperLoraNode.initializationPromise = null;
 let SuperLoraNode = _SuperLoraNode;
-const _FilePickerService = class _FilePickerService {
-  constructor() {
-    this.fileCache = /* @__PURE__ */ new Map();
-    this.cacheTimestamps = /* @__PURE__ */ new Map();
-  }
-  static getInstance() {
-    if (!_FilePickerService.instance) {
-      _FilePickerService.instance = new _FilePickerService();
-    }
-    return _FilePickerService.instance;
-  }
-  static getSupportedFileTypes() {
-    return this.FILE_TYPES;
-  }
-  /**
-   * Get files for a specific file type
-   */
-  async getFilesForType(fileType) {
-    const config = _FilePickerService.FILE_TYPES[fileType];
-    if (!config) {
-      throw new Error(`Unknown file type: ${fileType}`);
-    }
-    const cacheKey = `files_${fileType}`;
-    const cached = this.getCachedFiles(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    try {
-      const params = new URLSearchParams();
-      params.set("folder_name", config.folderName);
-      params.set("extensions", config.fileExtensions.join(","));
-      let response = await fetch(`/super_lora/files?${params.toString()}`, { method: "GET" });
-      if (!response.ok) {
-        response = await fetch(`/superlora/files?${params.toString()}`, { method: "GET" });
-      }
-      if (!response.ok) {
-        throw new Error(`Failed to fetch files: ${response.statusText}`);
-      }
-      const data = await response.json();
-      const files = data.files?.map((file) => {
-        const relativePath = file.relative_path || file.path;
-        return {
-          id: relativePath,
-          label: file.name.replace(/\.(ckpt|pt|pt2|bin|pth|safetensors|pkl|sft|gguf)$/i, ""),
-          path: relativePath,
-          fullPath: file.path,
-          filename: file.name,
-          extension: file.extension || "",
-          size: file.size,
-          modified: file.modified
-        };
-      }) || [];
-      this.setCachedFiles(cacheKey, files);
-      return files;
-    } catch (error) {
-      console.error(`Error fetching ${fileType} files:`, error);
-      return [];
-    }
-  }
-  /**
-   * Show enhanced file picker overlay
-   */
-  showFilePicker(fileType, onSelect, options = {}) {
-    const config = _FilePickerService.FILE_TYPES[fileType];
-    if (!config) {
-      throw new Error(`Unknown file type: ${fileType}`);
-    }
-    const {
-      title = `Select ${config.displayName}`,
-      multiSelect = false,
-      onMultiSelect,
-      currentValue
-    } = options;
-    this.getFilesForType(fileType).then((files) => {
-      const items = files.map((file) => ({
-        id: file.id,
-        label: file.label,
-        disabled: currentValue === file.id
-      }));
-      const overlay = OverlayService.getInstance();
-      const topFolders = Array.from(new Set(
-        files.map((file) => {
-          const rel = file.path || "";
-          const parts = rel.split(/[\\/]/);
-          return parts.length > 1 ? parts[0] : "__ROOT__";
-        })
-      ));
-      overlay.showSearchOverlay({
-        title,
-        placeholder: config.placeholder || `Search ${config.displayName.toLowerCase()}...`,
-        items,
-        allowCreate: false,
-        enableMultiToggle: multiSelect,
-        onChoose: (id) => {
-          const file = files.find((f) => f.id === id);
-          if (file) {
-            onSelect(file);
-          }
-        },
-        onChooseMany: onMultiSelect ? (ids) => {
-          const selectedFiles = ids.map((id) => files.find((f) => f.id === id)).filter(Boolean);
-          if (onMultiSelect && selectedFiles.length > 0) {
-            onMultiSelect(selectedFiles);
-          }
-        } : void 0,
-        folderChips: topFolders,
-        baseFolderName: config.folderName,
-        currentValue,
-        rightActions: []
-      });
-    }).catch((error) => {
-      console.error("Failed to load file picker:", error);
-      OverlayService.getInstance().showToast(`Failed to load ${config.displayName.toLowerCase()}`, "error");
-    });
-  }
-  /**
-   * Cache management
-   */
-  getCachedFiles(key) {
-    const cacheTime = this.cacheTimestamps.get(key);
-    if (!cacheTime) return null;
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1e3;
-    if (cacheTime < fiveMinutesAgo) {
-      this.fileCache.delete(key);
-      this.cacheTimestamps.delete(key);
-      return null;
-    }
-    return this.fileCache.get(key) || null;
-  }
-  setCachedFiles(key, files) {
-    this.fileCache.set(key, files);
-    this.cacheTimestamps.set(key, Date.now());
-  }
-  /**
-   * Clear all caches
-   */
-  clearCache() {
-    this.fileCache.clear();
-    this.cacheTimestamps.clear();
-  }
-  /**
-   * Refresh cache for specific file type
-   */
-  async refreshFileType(fileType) {
-    const cacheKey = `files_${fileType}`;
-    this.fileCache.delete(cacheKey);
-    this.cacheTimestamps.delete(cacheKey);
-    await this.getFilesForType(fileType);
-  }
-};
-_FilePickerService.FILE_TYPES = {
-  models: {
-    folderName: "checkpoints",
-    displayName: "Models",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🏗️",
-    placeholder: "Search models..."
-  },
-  vae: {
-    folderName: "vae",
-    displayName: "VAEs",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🎨",
-    placeholder: "Search VAEs..."
-  },
-  loras: {
-    folderName: "loras",
-    displayName: "LoRAs",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🏷️",
-    placeholder: "Search LoRAs..."
-  },
-  text_encoders: {
-    folderName: "text_encoders",
-    displayName: "Text Encoders",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "📝",
-    placeholder: "Search text encoders..."
-  },
-  diffusion_models: {
-    folderName: "diffusion_models",
-    displayName: "Diffusion Models",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🧠",
-    placeholder: "Search diffusion models..."
-  },
-  gguf_unet_models: {
-    folderName: "unet",
-    displayName: "UNET GGUF Models",
-    fileExtensions: [".gguf"],
-    icon: "🧠",
-    placeholder: "Search GGUF UNET models..."
-  },
-  controlnet: {
-    folderName: "controlnet",
-    displayName: "ControlNets",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🎛️",
-    placeholder: "Search ControlNets..."
-  },
-  upscale_models: {
-    folderName: "upscale_models",
-    displayName: "Upscale Models",
-    fileExtensions: [".ckpt", ".pt", ".pt2", ".bin", ".pth", ".safetensors", ".pkl", ".sft"],
-    icon: "🔍",
-    placeholder: "Search upscale models..."
-  }
-};
-let FilePickerService = _FilePickerService;
 const GGUF_CLIP_WIDGET_MAP = {
   DualCLIPLoaderGGUF: ["clip_name1", "clip_name2"],
   TripleCLIPLoaderGGUF: ["clip_name1", "clip_name2", "clip_name3"],

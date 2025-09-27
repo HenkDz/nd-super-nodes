@@ -17,7 +17,15 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@main
+      - name: Install patched comfy-cli
+        run: pip install --upgrade git+https://github.com/HenkDz/comfy-cli@main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+          python-version: '3.10'
+
+      - name: Publish Node
+        run: |
+          comfy --skip-prompt --no-enable-telemetry env
+          comfy node publish --token ${{ secrets.REGISTRY_ACCESS_TOKEN }}
