@@ -19,13 +19,31 @@ Set-Content -Path "version.json" -Value $versionManifest -Encoding utf8
 # Create temp directory
 New-Item -ItemType Directory -Path $TempDir -Force
 
-# Copy runtime files
-Copy-Item __init__.py $TempDir/
-Copy-Item -Recurse backend $TempDir/
-Copy-Item -Recurse web $TempDir/
-Copy-Item -Recurse templates $TempDir/
-Copy-Item update.ps1 $TempDir/
-Copy-Item update.sh $TempDir/
+# Copy runtime files, tolerate optional paths on CI
+$copyTargets = @(
+    @{ Path = '__init__.py'; Recurse = $false; Required = $true },
+    @{ Path = 'backend'; Recurse = $true; Required = $true },
+    @{ Path = 'web'; Recurse = $true; Required = $true },
+    @{ Path = 'templates'; Recurse = $true; Required = $false },
+    @{ Path = 'update.ps1'; Recurse = $false; Required = $true },
+    @{ Path = 'update.sh'; Recurse = $false; Required = $true }
+)
+
+foreach ($target in $copyTargets) {
+    $sourcePath = $target.Path
+    if (Test-Path $sourcePath) {
+        $destination = $TempDir
+        if ($target.Recurse) {
+            Copy-Item -Path $sourcePath -Destination $destination -Recurse -Force
+        } else {
+            Copy-Item -Path $sourcePath -Destination $destination -Force
+        }
+    } elseif ($target.Required) {
+        throw "Release asset missing: $sourcePath"
+    } else {
+        Write-Warning "Release: Skipping optional path '$sourcePath' (not found)."
+    }
+}
 
 # Emit version manifest into release payload
 Set-Content -Path (Join-Path $TempDir 'version.json') -Value $versionManifest -Encoding utf8
