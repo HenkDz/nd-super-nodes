@@ -13,7 +13,6 @@ A suite of modern, easy-to-use custom nodes for ComfyUI, including enhanced LoRA
 
 ## 📸 Screenshots
 
-
 - ![Super LoRA Loader node overview](docs/media/super-lora-loader-overview.png) – Expanded node with inline strength controls and tag headers.
 - ![ND Super Selector overlay picker](docs/media/nd-power-ui-overlay.png) – Lightning overlay with folder chips, search, and multi-select.
 - ![Template browser and quick actions](docs/media/template-browser.png) – Save, load, rename, and delete templates from the overlay dialog.
