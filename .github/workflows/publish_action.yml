@@ -57,6 +57,10 @@ jobs:
           if github_output:
               with open(github_output, 'a', encoding='utf-8') as output_file:
                   output_file.write(f"version_changed={'true' if version_changed else 'false'}\n")
+                  if current_version:
+                      output_file.write(f"current_version={current_version}\n")
+                  if previous_version:
+                      output_file.write(f"previous_version={previous_version}\n")
 
           if version_changed:
               print(f"Detected version change: {previous_version} -> {current_version}")
@@ -79,6 +83,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Create release package
+        if: steps.version_check.outputs.version_changed == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./release.ps1 -Version "${{ steps.version_check.outputs.current_version }}"
 
       - name: Publish Node
         if: steps.version_check.outputs.version_changed == 'true'
