@@ -13,6 +13,7 @@ from .lora_utils import get_available_loras, extract_trigger_words
 from .template_manager import get_template_manager
 from .civitai_service import get_civitai_service
 from .version_utils import get_update_status
+from .prompt_manager import get_prompt_manager
 
 
 async def get_loras(request):
@@ -232,9 +233,247 @@ async def get_version_info(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
+# ========== Prompt Builder API Endpoints ==========
+
+async def get_prompt_history(request):
+    """Get prompt history."""
+    try:
+        limit = int(request.rel_url.query.get("limit", "50"))
+        prompt_manager = get_prompt_manager()
+        history = prompt_manager.get_history(limit=limit)
+        return web.json_response({"history": history})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def add_prompt_history(request):
+    """Add entry to prompt history."""
+    try:
+        data = await request.json()
+        positive = data.get("positive", "")
+        negative = data.get("negative", "")
+        segments = data.get("segments", [])
+        metadata = data.get("metadata", {})
+        
+        prompt_manager = get_prompt_manager()
+        entry_id = prompt_manager.add_to_history(
+            positive=positive,
+            negative=negative,
+            segments=segments,
+            metadata=metadata
+        )
+        
+        return web.json_response({
+            "success": True,
+            "id": entry_id
+        })
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def delete_prompt_history(request):
+    """Delete a history entry."""
+    try:
+        data = await request.json()
+        entry_id = data.get("id")
+        
+        if not entry_id:
+            return web.json_response({"error": "Entry ID required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.delete_history_entry(entry_id)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def clear_prompt_history(request):
+    """Clear all prompt history."""
+    try:
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.clear_history()
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def search_prompt_history(request):
+    """Search prompt history."""
+    try:
+        query = request.rel_url.query.get("q", "")
+        limit = int(request.rel_url.query.get("limit", "20"))
+        
+        prompt_manager = get_prompt_manager()
+        results = prompt_manager.search_history(query, limit=limit)
+        
+        return web.json_response({"results": results})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_prompt_favorites(request):
+    """Get all prompt favorites."""
+    try:
+        prompt_manager = get_prompt_manager()
+        favorites = prompt_manager.get_favorites()
+        return web.json_response({"favorites": favorites})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def add_prompt_favorite(request):
+    """Add a prompt to favorites."""
+    try:
+        data = await request.json()
+        name = data.get("name")
+        positive = data.get("positive", "")
+        negative = data.get("negative", "")
+        segments = data.get("segments", [])
+        metadata = data.get("metadata", {})
+        
+        if not name:
+            return web.json_response({"error": "Name required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        entry_id = prompt_manager.add_to_favorites(
+            name=name,
+            positive=positive,
+            negative=negative,
+            segments=segments,
+            metadata=metadata
+        )
+        
+        return web.json_response({
+            "success": True,
+            "id": entry_id
+        })
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def delete_prompt_favorite(request):
+    """Delete a favorite."""
+    try:
+        data = await request.json()
+        entry_id = data.get("id")
+        
+        if not entry_id:
+            return web.json_response({"error": "Entry ID required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.delete_favorite(entry_id)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def rename_prompt_favorite(request):
+    """Rename a favorite."""
+    try:
+        data = await request.json()
+        entry_id = data.get("id")
+        new_name = data.get("name")
+        
+        if not entry_id or not new_name:
+            return web.json_response({"error": "ID and name required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.rename_favorite(entry_id, new_name)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_prompt_templates(request):
+    """Get prompt templates."""
+    try:
+        prompt_manager = get_prompt_manager()
+        templates = prompt_manager.list_templates()
+        return web.json_response({"templates": templates})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def save_prompt_template(request):
+    """Save a prompt template."""
+    try:
+        data = await request.json()
+        name = data.get("name")
+        segments = data.get("segments", [])
+        
+        if not name:
+            return web.json_response({"error": "Name required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.save_template(name, segments)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def load_prompt_template(request):
+    """Load a prompt template."""
+    try:
+        name = request.match_info.get("name")
+        
+        if not name:
+            return web.json_response({"error": "Name required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        template = prompt_manager.load_template(name)
+        
+        if template:
+            return web.json_response(template)
+        else:
+            return web.json_response({"error": "Template not found"}, status=404)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def delete_prompt_template(request):
+    """Delete a prompt template."""
+    try:
+        data = await request.json()
+        name = data.get("name")
+        
+        if not name:
+            return web.json_response({"error": "Name required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.delete_template(name)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def rename_prompt_template(request):
+    """Rename a prompt template."""
+    try:
+        data = await request.json()
+        old_name = data.get("old_name")
+        new_name = data.get("new_name")
+        
+        if not old_name or not new_name:
+            return web.json_response({"error": "Both old and new names required"}, status=400)
+        
+        prompt_manager = get_prompt_manager()
+        success = prompt_manager.rename_template(old_name, new_name)
+        
+        return web.json_response({"success": success})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 # Route registration function
 def register_routes(app):
-    """Register all Super LoRA Loader routes"""
+    """Register all ND Super Nodes API routes"""
+    
+    # ========== Super LoRA Loader Routes ==========
     app.router.add_get("/super_lora/loras", get_loras)
     app.router.add_get("/super_lora/files", get_files)
     app.router.add_get("/super_lora/templates", get_templates)
@@ -258,3 +497,24 @@ def register_routes(app):
     app.router.add_delete("/superlora/templates/{name}", delete_template_by_name)
     app.router.add_post("/superlora/civitai_info", get_civitai_info)
     app.router.add_get("/superlora/version", get_version_info)
+    
+    # ========== Super Prompt Builder Routes ==========
+    # History
+    app.router.add_get("/super_prompt/history", get_prompt_history)
+    app.router.add_post("/super_prompt/history", add_prompt_history)
+    app.router.add_delete("/super_prompt/history", delete_prompt_history)
+    app.router.add_post("/super_prompt/history/clear", clear_prompt_history)
+    app.router.add_get("/super_prompt/history/search", search_prompt_history)
+    
+    # Favorites
+    app.router.add_get("/super_prompt/favorites", get_prompt_favorites)
+    app.router.add_post("/super_prompt/favorites", add_prompt_favorite)
+    app.router.add_delete("/super_prompt/favorites", delete_prompt_favorite)
+    app.router.add_post("/super_prompt/favorites/rename", rename_prompt_favorite)
+    
+    # Templates
+    app.router.add_get("/super_prompt/templates", get_prompt_templates)
+    app.router.add_post("/super_prompt/templates", save_prompt_template)
+    app.router.add_get("/super_prompt/templates/{name}", load_prompt_template)
+    app.router.add_delete("/super_prompt/templates", delete_prompt_template)
+    app.router.add_post("/super_prompt/templates/rename", rename_prompt_template)

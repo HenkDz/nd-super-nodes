@@ -130,3 +130,91 @@ export interface ComfyExtension {
   // Custom helper we attach at runtime in our extension implementation
   setupNodeEventHandlers?(node: any): void;
 }
+
+// ========== Prompt Builder Types ==========
+
+export interface PromptSegment {
+  /** Unique segment ID */
+  id: string;
+  /** Segment type (positive, negative, or custom) */
+  type: 'positive' | 'negative' | 'custom';
+  /** Segment text content */
+  text: string;
+  /** Whether this segment is enabled */
+  enabled: boolean;
+  /** Weight/strength for this segment (default 1.0) */
+  weight: number;
+  /** Tag/category for organization */
+  tag?: string;
+  /** Custom variables defined in this segment */
+  variables?: Record<string, string>;
+  /** Order/position in the list */
+  order?: number;
+}
+
+export interface PromptVariable {
+  /** Variable key (e.g., "character", "trigger.1") */
+  key: string;
+  /** Variable value/content */
+  value: string;
+  /** Source of the variable (lora, user, wildcard) */
+  source: 'lora' | 'user' | 'wildcard';
+  /** Display label */
+  label?: string;
+}
+
+export interface PromptHistoryEntry {
+  /** Unique entry ID */
+  id: string;
+  /** Timestamp */
+  timestamp: string;
+  /** Positive prompt text */
+  positive: string;
+  /** Negative prompt text */
+  negative: string;
+  /** Original segments used */
+  segments: PromptSegment[];
+  /** Additional metadata */
+  metadata?: Record<string, any>;
+}
+
+export interface PromptFavorite {
+  /** Unique favorite ID */
+  id: string;
+  /** User-friendly name */
+  name: string;
+  /** Timestamp */
+  timestamp: string;
+  /** Positive prompt text */
+  positive: string;
+  /** Negative prompt text */
+  negative: string;
+  /** Original segments */
+  segments: PromptSegment[];
+  /** Additional metadata */
+  metadata?: Record<string, any>;
+}
+
+export interface PromptTemplate {
+  /** Template name */
+  name: string;
+  /** Template segments */
+  segments: PromptSegment[];
+  /** Creation timestamp */
+  timestamp: string;
+}
+
+export interface PromptBuilderSettings {
+  /** Auto-save to history */
+  autoSaveHistory: boolean;
+  /** Enable variables system */
+  enableVariables: boolean;
+  /** Show token counter */
+  showTokenCounter: boolean;
+  /** Enable tag system */
+  enableTags: boolean;
+  /** Auto-import LoRA trigger words */
+  autoImportTriggerWords: boolean;
+  /** Variable format preference (mustache, dollar, curly) */
+  variableFormat: 'mustache' | 'dollar' | 'curly';
+}

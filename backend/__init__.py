@@ -5,19 +5,25 @@ A suite of standalone, modern implementations for enhanced LoRA loading and UI f
 
 try:
     from .nd_super_lora_node import NdSuperLoraLoader
+    from .nd_super_prompt_node import NdSuperPromptBuilder, NdSuperPromptBuilderAdvanced
 except ImportError:
     # Fallback for development/testing
     import sys
     import os
     sys.path.append(os.path.dirname(__file__))
     from nd_super_lora_node import NdSuperLoraLoader
+    from nd_super_prompt_node import NdSuperPromptBuilder, NdSuperPromptBuilderAdvanced
 
 NODE_CLASS_MAPPINGS = {
     "NdSuperLoraLoader": NdSuperLoraLoader,
+    "NdSuperPromptBuilder": NdSuperPromptBuilder,
+    "NdSuperPromptBuilderAdvanced": NdSuperPromptBuilderAdvanced,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "NdSuperLoraLoader": "ND Super LoRA Loader",
+    "NdSuperPromptBuilder": "ND Super Prompt Builder",
+    "NdSuperPromptBuilderAdvanced": "ND Super Prompt Builder (Advanced)",
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
