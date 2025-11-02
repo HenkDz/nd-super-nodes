@@ -783,16 +783,47 @@ class OverlayService {
     let multiMode = false;
     const selectedIds = /* @__PURE__ */ new Set();
     const ROOT_KEY = "__ROOT__";
+    let lastClickedIndex = null;
     const controls = document.createElement("div");
     controls.style.cssText = `
       display: ${multiEnabled ? "flex" : "none"};
       align-items: center;
-      justify-content: flex-end;
+      justify-content: space-between;
       gap: 10px;
       padding: 0 12px 6px 12px;
       color: #ddd;
       font-size: 12px;
     `;
+    const selectionBtnsWrap = document.createElement("div");
+    selectionBtnsWrap.style.cssText = `
+      display: none;
+      gap: 8px;
+    `;
+    const selectAllBtn = document.createElement("button");
+    selectAllBtn.type = "button";
+    selectAllBtn.textContent = "Select All";
+    selectAllBtn.className = "nd-overlay-select-btn";
+    selectAllBtn.addEventListener("click", () => {
+      const filtered = getFilteredItems();
+      filtered.forEach((item) => {
+        if (!item.disabled) {
+          selectedIds.add(item.id);
+        }
+      });
+      render(search.value);
+    });
+    const unselectAllBtn = document.createElement("button");
+    unselectAllBtn.type = "button";
+    unselectAllBtn.textContent = "Unselect All";
+    unselectAllBtn.className = "nd-overlay-select-btn";
+    unselectAllBtn.addEventListener("click", () => {
+      selectedIds.clear();
+      render(search.value);
+    });
+    selectionBtnsWrap.appendChild(selectAllBtn);
+    selectionBtnsWrap.appendChild(unselectAllBtn);
+    const rightControls = document.createElement("div");
+    rightControls.style.cssText = "display: flex; align-items: center; gap: 10px;";
     const multiLabel = document.createElement("label");
     multiLabel.className = "nd-overlay-multi-toggle";
     const multiToggle = document.createElement("input");
@@ -800,6 +831,7 @@ class OverlayService {
     multiToggle.className = "nd-overlay-multi-toggle-checkbox";
     multiToggle.addEventListener("change", () => {
       multiMode = !!multiToggle.checked;
+      selectionBtnsWrap.style.display = multiMode ? "flex" : "none";
       render(search.value);
       renderFooter();
     });
@@ -808,7 +840,9 @@ class OverlayService {
     multiText.className = "nd-overlay-multi-toggle-label";
     multiLabel.appendChild(multiToggle);
     multiLabel.appendChild(multiText);
-    controls.appendChild(multiLabel);
+    rightControls.appendChild(multiLabel);
+    controls.appendChild(selectionBtnsWrap);
+    controls.appendChild(rightControls);
     const chipWrap = document.createElement("div");
     chipWrap.className = "nd-overlay-chips-container";
     const subChipWrap = document.createElement("div");
@@ -841,6 +875,35 @@ class OverlayService {
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) closeOverlay();
     });
+    const getFilteredItems = () => {
+      const query = (search.value || "").trim().toLowerCase();
+      const termFiltered = query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
+      let filtered = termFiltered;
+      if (folderFeatureEnabled && activeFolders.size > 0) {
+        filtered = termFiltered.filter((item) => {
+          const parts = item.id.split(/[\\/]/);
+          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
+          return activeFolders.has(top);
+        });
+        if (activeSubfolders.size > 0) {
+          filtered = filtered.filter((item) => {
+            const parts = item.id.split(/[\\/]/);
+            const top = parts.length > 1 ? parts[0] : "";
+            if (!top) return false;
+            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
+            const key = `${top}/${sub}`;
+            return activeSubfolders.has(key);
+          });
+        }
+      }
+      if (options.allowCreate && query) {
+        const exact = items.some((item) => item.label.toLowerCase() === query);
+        if (!exact) {
+          filtered = [{ id: (search.value || "").trim(), label: `Create "${(search.value || "").trim()}"` }, ...filtered];
+        }
+      }
+      return filtered;
+    };
     const renderChips = (folderCounts) => {
       chipWrap.innerHTML = "";
       const header2 = document.createElement("div");
@@ -970,37 +1033,14 @@ class OverlayService {
         });
         renderChips(folderCounts);
       }
-      let filtered = termFiltered;
-      if (folderFeatureEnabled && activeFolders.size > 0) {
-        filtered = termFiltered.filter((item) => {
-          const parts = item.id.split(/[\\/]/);
-          const top = parts.length > 1 ? parts[0] : ROOT_KEY;
-          return activeFolders.has(top);
-        });
-        if (activeSubfolders.size > 0) {
-          filtered = filtered.filter((item) => {
-            const parts = item.id.split(/[\\/]/);
-            const top = parts.length > 1 ? parts[0] : "";
-            if (!top) return false;
-            const sub = parts.length > 2 ? parts[1] : ROOT_KEY;
-            const key = `${top}/${sub}`;
-            return activeSubfolders.has(key);
-          });
-        }
-      }
-      if (options.allowCreate && query) {
-        const exact = items.some((item) => item.label.toLowerCase() === query);
-        if (!exact) {
-          filtered = [{ id: term, label: `Create "${term}"` }, ...filtered];
-        }
-      }
+      const filtered = getFilteredItems();
       empty.style.display = filtered.length ? "none" : "block";
       try {
         header.textContent = `${options.title} (${filtered.length}/${items.length})`;
       } catch {
       }
       const maxToShow = Math.min(2e3, filtered.length);
-      filtered.slice(0, maxToShow).forEach((item) => {
+      filtered.slice(0, maxToShow).forEach((item, index) => {
         const row = document.createElement("div");
         row.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 0;";
         const leftBtn = document.createElement("button");
@@ -1053,17 +1093,33 @@ class OverlayService {
           leftBtn.classList.toggle("is-selected", multiMode && isSelected);
         };
         applyState();
-        leftBtn.addEventListener("click", () => {
+        leftBtn.addEventListener("click", (event) => {
           if (item.disabled) return;
           if (!multiMode) {
             options.onChoose(item.id);
             closeOverlay();
             return;
           }
-          if (selectedIds.has(item.id)) selectedIds.delete(item.id);
-          else selectedIds.add(item.id);
-          applyState();
-          renderFooter();
+          if (event.shiftKey && lastClickedIndex !== null && lastClickedIndex !== index) {
+            const start = Math.min(lastClickedIndex, index);
+            const end = Math.max(lastClickedIndex, index);
+            const displayedItems = filtered.slice(0, maxToShow);
+            for (let i = start; i <= end; i++) {
+              if (displayedItems[i] && !displayedItems[i].disabled) {
+                selectedIds.add(displayedItems[i].id);
+              }
+            }
+            render(search.value);
+          } else {
+            if (selectedIds.has(item.id)) {
+              selectedIds.delete(item.id);
+            } else {
+              selectedIds.add(item.id);
+            }
+            applyState();
+            renderFooter();
+          }
+          lastClickedIndex = index;
         });
         row.appendChild(leftBtn);
         const actions = [];
@@ -1441,6 +1497,21 @@ class OverlayService {
         [data-super-lora-overlay="1"] .nd-overlay-multi-toggle-label {
           font-weight: 500;
           letter-spacing: 0.01em;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-select-btn {
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid #4a4a4a;
+          background: #2a2a2a;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        [data-super-lora-overlay="1"] .nd-overlay-select-btn:hover {
+          background: #333;
+          border-color: #5a5a5a;
         }
       `;
       document.head.appendChild(style);
