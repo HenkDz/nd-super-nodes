@@ -1104,9 +1104,14 @@ class OverlayService {
             const start = Math.min(lastClickedIndex, index);
             const end = Math.max(lastClickedIndex, index);
             const displayedItems = filtered.slice(0, maxToShow);
+            const isBackwardSelection = index < lastClickedIndex;
             for (let i = start; i <= end; i++) {
               if (displayedItems[i] && !displayedItems[i].disabled) {
-                selectedIds.add(displayedItems[i].id);
+                if (isBackwardSelection) {
+                  selectedIds.delete(displayedItems[i].id);
+                } else {
+                  selectedIds.add(displayedItems[i].id);
+                }
               }
             }
             render(search.value);
