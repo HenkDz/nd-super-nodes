@@ -108,6 +108,9 @@ export class OverlayService {
     const selectedIds = new Set<string>();
     const ROOT_KEY = '__ROOT__';
     let lastClickedIndex: number | null = null;
+    let shiftSessionAnchor: number | null = null;
+    let lastShiftRangeStart: number | null = null;
+    let lastShiftRangeEnd: number | null = null;
 
     const controls = document.createElement('div');
     controls.style.cssText = `
@@ -483,27 +486,48 @@ export class OverlayService {
             return;
           }
 
-          // Handle shift-click for range selection
+          // Handle shift-click for range selection with session tracking
           if (event.shiftKey && lastClickedIndex !== null && lastClickedIndex !== index) {
-            const start = Math.min(lastClickedIndex, index);
-            const end = Math.max(lastClickedIndex, index);
             const displayedItems = filtered.slice(0, maxToShow);
             
-            // When shift-clicking backwards (index < lastClickedIndex), unselect the range
-            const isBackwardSelection = index < lastClickedIndex;
-            
-            for (let i = start; i <= end; i++) {
-              if (displayedItems[i] && !displayedItems[i].disabled) {
-                if (isBackwardSelection) {
+            // If this is a continuation of an existing shift session
+            if (shiftSessionAnchor !== null && lastShiftRangeStart !== null && lastShiftRangeEnd !== null) {
+              // Unselect the previous range from this session
+              for (let i = lastShiftRangeStart; i <= lastShiftRangeEnd; i++) {
+                if (displayedItems[i] && !displayedItems[i].disabled) {
                   selectedIds.delete(displayedItems[i].id);
-                } else {
-                  selectedIds.add(displayedItems[i].id);
                 }
               }
             }
+            
+            // If no session anchor, start a new session with the last clicked index
+            if (shiftSessionAnchor === null) {
+              shiftSessionAnchor = lastClickedIndex;
+            }
+            
+            // Calculate new range from session anchor to current index
+            const start = Math.min(shiftSessionAnchor, index);
+            const end = Math.max(shiftSessionAnchor, index);
+            
+            // Select the new range
+            for (let i = start; i <= end; i++) {
+              if (displayedItems[i] && !displayedItems[i].disabled) {
+                selectedIds.add(displayedItems[i].id);
+              }
+            }
+            
+            // Remember this range for potential reversal
+            lastShiftRangeStart = start;
+            lastShiftRangeEnd = end;
+            
             render(search.value);
           } else {
-            // Regular click toggles selection
+            // Regular click (without shift) - reset shift session
+            shiftSessionAnchor = null;
+            lastShiftRangeStart = null;
+            lastShiftRangeEnd = null;
+            
+            // Toggle selection
             if (selectedIds.has(item.id)) {
               selectedIds.delete(item.id);
             } else {

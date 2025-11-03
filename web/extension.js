@@ -784,6 +784,9 @@ class OverlayService {
     const selectedIds = /* @__PURE__ */ new Set();
     const ROOT_KEY = "__ROOT__";
     let lastClickedIndex = null;
+    let shiftSessionAnchor = null;
+    let lastShiftRangeStart = null;
+    let lastShiftRangeEnd = null;
     const controls = document.createElement("div");
     controls.style.cssText = `
       display: ${multiEnabled ? "flex" : "none"};
@@ -1101,21 +1104,31 @@ class OverlayService {
             return;
           }
           if (event.shiftKey && lastClickedIndex !== null && lastClickedIndex !== index) {
-            const start = Math.min(lastClickedIndex, index);
-            const end = Math.max(lastClickedIndex, index);
             const displayedItems = filtered.slice(0, maxToShow);
-            const isBackwardSelection = index < lastClickedIndex;
-            for (let i = start; i <= end; i++) {
-              if (displayedItems[i] && !displayedItems[i].disabled) {
-                if (isBackwardSelection) {
+            if (shiftSessionAnchor !== null && lastShiftRangeStart !== null && lastShiftRangeEnd !== null) {
+              for (let i = lastShiftRangeStart; i <= lastShiftRangeEnd; i++) {
+                if (displayedItems[i] && !displayedItems[i].disabled) {
                   selectedIds.delete(displayedItems[i].id);
-                } else {
-                  selectedIds.add(displayedItems[i].id);
                 }
               }
             }
+            if (shiftSessionAnchor === null) {
+              shiftSessionAnchor = lastClickedIndex;
+            }
+            const start = Math.min(shiftSessionAnchor, index);
+            const end = Math.max(shiftSessionAnchor, index);
+            for (let i = start; i <= end; i++) {
+              if (displayedItems[i] && !displayedItems[i].disabled) {
+                selectedIds.add(displayedItems[i].id);
+              }
+            }
+            lastShiftRangeStart = start;
+            lastShiftRangeEnd = end;
             render(search.value);
           } else {
+            shiftSessionAnchor = null;
+            lastShiftRangeStart = null;
+            lastShiftRangeEnd = null;
             if (selectedIds.has(item.id)) {
               selectedIds.delete(item.id);
             } else {
