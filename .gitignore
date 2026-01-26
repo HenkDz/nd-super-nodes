@@ -13,3 +13,6 @@ frontend/type_errors.log
 docs/reddit-post.md
 .env
 node.zip
+
+# Update script backups
+backups/
