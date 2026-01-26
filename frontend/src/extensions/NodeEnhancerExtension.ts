@@ -22,6 +22,21 @@ const GGUF_CLIP_WIDGET_MAP: Record<string, string[]> = {
 };
 
 export class NodeEnhancerExtension {
+  /**
+   * Nodes where the ND Super Selector context menu toggle should NOT appear.
+   * These nodes have their own special context menus (e.g., Mask Editor)
+   * that can conflict with our menu modifications.
+   */
+  private static readonly NODE_MENU_BLACKLIST: Set<string> = new Set([
+    'LoadImage',
+    'LoadImageMask',
+    'SaveImage',
+    'PreviewImage',
+    'LoadVideo',
+    'SaveVideo',
+    // Add any other nodes with special context menus here
+  ]);
+
   private static readonly ENHANCED_NODES: EnhancedNodeConfig[] = [
     {
       nodeType: 'CheckpointLoader',
@@ -597,6 +612,11 @@ export class NodeEnhancerExtension {
 
     const originalMenu = nodeType.prototype.getExtraMenuOptions;
     nodeType.prototype.getExtraMenuOptions = function(canvas: any, optionsArr?: any[]) {
+      // Skip menu modification for blacklisted nodes (Issue #8: Mask Editor conflict)
+      if (NodeEnhancerExtension.NODE_MENU_BLACKLIST.has(nodeData?.name)) {
+        return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
+      }
+
       if (!NodeEnhancerExtension.isGloballyEnabled()) {
         return originalMenu ? originalMenu.call(this, canvas, optionsArr) : optionsArr;
       }
