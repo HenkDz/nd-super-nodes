@@ -20,10 +20,14 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    // Vue-specific settings
+    "jsx": "preserve",
+    "types": ["vite/client"]
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "src/**/*.vue"
   ],
   "exclude": [
     "node_modules",
