@@ -17,7 +17,7 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
       fetchAttempted: false
     };
     this.hitAreas = {
-      enabled: { bounds: [0, 0], onDown: this.onEnabledDown, priority: 60 },
+      enabled: { bounds: [0, 0], onClick: this.onEnabledClick, priority: 60 },
       lora: { bounds: [0, 0], onClick: this.onLoraClick, priority: 10 },
       tag: { bounds: [0, 0], onClick: this.onTagClick, priority: 20 },
       strength: { bounds: [0, 0], onClick: this.onStrengthClick, priority: 80 },
@@ -95,7 +95,8 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
     if (this.value.enabled) {
       ctx.fillText("●", posX + toggleSize / 2, posY + midY);
     }
-    this.hitAreas.enabled.bounds = [posX, 0, toggleSize, fullHeight];
+    // Fix #6: Constrain hit area to actual toggle button, not full row height
+    this.hitAreas.enabled.bounds = [posX, toggleY, toggleSize, toggleSize];
     posX += toggleSize + 8;
 
     const loraWidgets = node.customWidgets?.filter((w: any) => w instanceof SuperLoraWidget) || [];
@@ -434,7 +435,8 @@ export class SuperLoraWidget extends SuperLoraBaseWidget {
     return truncated + "...";
   }
 
-  onEnabledDown = (_event: any, _pos: any, node: any): boolean => {
+  // Fix #6: Changed from onDown to onClick for standard click behavior
+  onEnabledClick = (_event: any, _pos: any, node: any): boolean => {
     this.value.enabled = !this.value.enabled;
     node.setDirtyCanvas(true, false);
     try { WidgetAPI.syncExecutionWidgets(node); } catch {}
