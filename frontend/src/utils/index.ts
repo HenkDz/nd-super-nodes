@@ -29,3 +29,29 @@ export {
   type DualModeRenderer,
   type RenderBounds,
 } from './render-mode';
+
+// Canvas drawing utilities
+export {
+  THEME,
+  drawRoundedRect,
+  drawToggle,
+  drawButton,
+  drawStrengthBox,
+  drawIconButton,
+  drawStatusIndicator,
+  truncateText,
+  calculateRowLayout,
+  type LayoutConfig,
+  type LayoutResult,
+} from './canvas-drawing';
+
+// State synchronization
+export {
+  StateStore,
+  toLoraWidgetState,
+  toTagHeaderState,
+  fromLoraWidgetState,
+  getStoreForNode,
+  createDispatch,
+  useNodeState,
+} from './state-sync';
