@@ -2,6 +2,7 @@
  * Super LoRA Loader - ComfyUI Extension
  *
  * A modern, standalone implementation of a powerful LoRA loader with advanced features.
+ * Supports both legacy Canvas (LiteGraph) and Nodes 2.0 (Vue) rendering modes.
  */
 
 // @ts-ignore ComfyUI provides this at runtime
@@ -11,10 +12,58 @@ import { SuperLoraNode } from './nodes/SuperLoraNode';
 import './styles/super-lora.scss';
 import './extensions/NodeEnhancer';
 import { UpdateService } from './services/UpdateService';
+import {
+  isNodes2Enabled,
+  getRenderingMode,
+  onRenderingModeChange,
+  getNodes2Capabilities,
+  Nodes2Capabilities,
+  RenderingMode
+} from './utils';
 
 // Extension configuration
 const EXTENSION_NAME = 'SuperLoraLoader';
 const NODE_TYPE = 'NdSuperLoraLoader';
+
+// Track current rendering mode
+let currentRenderingMode: RenderingMode = 'canvas';
+let nodes2Capabilities: Nodes2Capabilities | null = null;
+
+/**
+ * Initialize rendering mode detection
+ */
+function initRenderingModeDetection(): void {
+  currentRenderingMode = getRenderingMode();
+  nodes2Capabilities = getNodes2Capabilities();
+  
+  console.log(`Super LoRA Loader: Rendering mode = ${currentRenderingMode}`);
+  if (nodes2Capabilities) {
+    console.log('Super LoRA Loader: Nodes 2.0 capabilities:', nodes2Capabilities);
+  }
+
+  // Subscribe to mode changes (for dynamic switching if supported)
+  onRenderingModeChange((newMode) => {
+    console.log(`Super LoRA Loader: Rendering mode changed to ${newMode}`);
+    currentRenderingMode = newMode;
+    // Future: Trigger re-render of all nodes in new mode
+  });
+}
+
+/**
+ * Get current rendering mode
+ * Exported for use by other modules
+ */
+export function getCurrentRenderingMode(): RenderingMode {
+  return currentRenderingMode;
+}
+
+/**
+ * Check if Nodes 2.0 is active
+ * Exported for use by other modules
+ */
+export function isNodes2Active(): boolean {
+  return isNodes2Enabled();
+}
 
 // Main extension object
 const superLoraExtension: ComfyExtension = {
@@ -94,8 +143,13 @@ const superLoraExtension: ComfyExtension = {
    * Called before a node type is registered
    */
   beforeRegisterNodeDef(nodeType: any, nodeData: any): void {
+    // Initialize rendering mode detection once (on first node registration)
+    if (currentRenderingMode === 'canvas' && !nodes2Capabilities) {
+      initRenderingModeDetection();
+    }
+
     if (nodeData.name === NODE_TYPE) {
-      console.log('Super LoRA Loader: Registering node type');
+      console.log(`Super LoRA Loader: Registering node type (mode: ${currentRenderingMode})`);
 
       // Kick off async initialization without blocking node registration.
       SuperLoraNode.initialize()
@@ -189,6 +243,7 @@ export * from './types';
 export * from './services/LoraService';
 export * from './services/CivitAiService';
 export * from './services/TemplateService';
+export * from './utils';
 
 // Bridge SuperLoraNode helpers for other modules (e.g., ND Super Selector)
 try {
