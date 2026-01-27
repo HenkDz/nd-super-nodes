@@ -3408,6 +3408,7 @@ const _SuperLoraNode = class _SuperLoraNode {
         }
         const hasAddLoRA = options.some((opt) => opt && opt.content === "🏷️ Add LoRA");
         const hasSettings = options.some((opt) => opt && opt.content === "⚙️ Settings");
+        const hasCollapseAll = options.some((opt) => opt && opt.content === "⏫ Collapse All Tags");
         if (!hasAddLoRA || !hasSettings) {
           if (options.length === 0 || options[options.length - 1] !== null) {
             options.push(null);
@@ -3418,6 +3419,11 @@ const _SuperLoraNode = class _SuperLoraNode {
           if (!hasSettings) {
             options.push({ content: "⚙️ Settings", callback: (_event) => _SuperLoraNode.showSettingsDialog(this) });
           }
+        }
+        if (!hasCollapseAll && this.properties?.enableTags) {
+          options.push(null);
+          options.push({ content: "⏫ Collapse All Tags", callback: () => _SuperLoraNode.collapseAllTags(this) });
+          options.push({ content: "⏬ Expand All Tags", callback: () => _SuperLoraNode.expandAllTags(this) });
         }
         return options;
       } catch {
@@ -3496,6 +3502,7 @@ const _SuperLoraNode = class _SuperLoraNode {
   }
   /**
    * Custom drawing for all widgets
+   * Performance optimized with viewport culling (Issue #9)
    */
   static drawCustomWidgets(node, ctx) {
     if (!node.customWidgets) return;
@@ -3503,25 +3510,41 @@ const _SuperLoraNode = class _SuperLoraNode {
     const marginDefault = _SuperLoraNode.MARGIN_SMALL;
     let currentY = this.NODE_WIDGET_TOP_OFFSET;
     if (!isBypassed) {
+      const viewportBounds = this.getViewportBounds(node, ctx);
+      node.size?.[1] || 400;
       const renderable = [];
+      let layoutY = currentY;
       for (const widget of node.customWidgets) {
         const size = widget.computeSize();
         const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
         const height = widget instanceof SuperLoraWidget ? 34 : size[1];
         if (height === 0 || isCollapsed) continue;
-        renderable.push(widget);
+        renderable.push({ widget, y: layoutY, height });
+        const marginAfter = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
+        layoutY += height + marginAfter;
       }
-      renderable.forEach((widget, index) => {
-        const size = widget.computeSize();
-        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-        widget.draw(ctx, node, node.size[0], currentY, height);
+      for (let i = 0; i < renderable.length; i++) {
+        const { widget, y, height } = renderable[i];
+        const isLast = i === renderable.length - 1;
+        if (viewportBounds) {
+          const widgetBottom = y + height;
+          const widgetTop = y;
+          if (widgetBottom < viewportBounds.top || widgetTop > viewportBounds.bottom) {
+            let marginAfter2 = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
+            if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+              marginAfter2 = Math.max(marginDefault, 8);
+            }
+            currentY = y + height + marginAfter2;
+            continue;
+          }
+        }
+        widget.draw(ctx, node, node.size[0], y, height);
         let marginAfter = widget instanceof SuperLoraTagWidget && widget.isCollapsed() ? 0 : marginDefault;
-        const isLast = index === renderable.length - 1;
         if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
           marginAfter = Math.max(marginDefault, 8);
         }
-        currentY += height + marginAfter;
-      });
+        currentY = y + height + marginAfter;
+      }
     }
     if (isBypassed) {
       try {
@@ -3540,6 +3563,59 @@ const _SuperLoraNode = class _SuperLoraNode {
       } catch {
       }
     }
+  }
+  /**
+   * Get viewport bounds for culling off-screen widgets (Issue #9 performance)
+   * Returns null if bounds cannot be determined (draw everything)
+   */
+  static getViewportBounds(node, ctx) {
+    try {
+      const canvas = app?.canvas;
+      if (!canvas) return null;
+      const ds = canvas.ds;
+      if (!ds || !ds.scale) return null;
+      const canvasEl = canvas.canvas;
+      if (!canvasEl) return null;
+      const scale = ds.scale;
+      const offset = ds.offset || [0, 0];
+      const nodePos = node.pos || [0, 0];
+      const canvasHeight = canvasEl.height / scale;
+      const viewTop = -offset[1] / scale - nodePos[1];
+      const viewBottom = viewTop + canvasHeight;
+      const padding = 50;
+      return {
+        top: Math.max(0, viewTop - padding),
+        bottom: viewBottom + padding
+      };
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * Collapse all tag groups (Issue #9 performance request)
+   */
+  static collapseAllTags(node) {
+    if (!node.customWidgets) return;
+    for (const widget of node.customWidgets) {
+      if (widget instanceof SuperLoraTagWidget) {
+        widget.value.collapsed = true;
+      }
+    }
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas?.(true, true);
+  }
+  /**
+   * Expand all tag groups (Issue #9 performance request)
+   */
+  static expandAllTags(node) {
+    if (!node.customWidgets) return;
+    for (const widget of node.customWidgets) {
+      if (widget instanceof SuperLoraTagWidget) {
+        widget.value.collapsed = false;
+      }
+    }
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas?.(true, true);
   }
   /**
    * Handle mouse interactions

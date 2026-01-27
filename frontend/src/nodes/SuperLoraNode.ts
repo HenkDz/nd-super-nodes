@@ -250,6 +250,7 @@ export class SuperLoraNode {
 
         const hasAddLoRA = options.some((opt: any) => opt && opt.content === "🏷️ Add LoRA");
         const hasSettings = options.some((opt: any) => opt && opt.content === "⚙️ Settings");
+        const hasCollapseAll = options.some((opt: any) => opt && opt.content === "⏫ Collapse All Tags");
 
         if (!hasAddLoRA || !hasSettings) {
           if (options.length === 0 || options[options.length - 1] !== null) {
@@ -261,6 +262,13 @@ export class SuperLoraNode {
           if (!hasSettings) {
             options.push({ content: "⚙️ Settings", callback: (_event: any) => SuperLoraNode.showSettingsDialog(this) });
           }
+        }
+
+        // Add collapse/expand all options when tags are enabled (Issue #9 performance request)
+        if (!hasCollapseAll && this.properties?.enableTags) {
+          options.push(null);
+          options.push({ content: "⏫ Collapse All Tags", callback: () => SuperLoraNode.collapseAllTags(this) });
+          options.push({ content: "⏬ Expand All Tags", callback: () => SuperLoraNode.expandAllTags(this) });
         }
 
         return options;
@@ -361,35 +369,63 @@ export class SuperLoraNode {
 
   /**
    * Custom drawing for all widgets
+   * Performance optimized with viewport culling (Issue #9)
    */
   static drawCustomWidgets(node: any, ctx: any): void {
     if (!node.customWidgets) return;
     const isBypassed = SuperLoraNode.isNodeBypassed(node);
     const marginDefault = SuperLoraNode.MARGIN_SMALL;
-    let currentY = this.NODE_WIDGET_TOP_OFFSET; // USE THE CONSTANT
+    let currentY = this.NODE_WIDGET_TOP_OFFSET;
 
     if (!isBypassed) {
+      // Get viewport bounds for culling (performance optimization)
+      const viewportBounds = this.getViewportBounds(node, ctx);
+      const nodeHeight = node.size?.[1] || 400;
+
       // Build list of widgets that will render
-      const renderable: any[] = [];
+      const renderable: { widget: any; y: number; height: number }[] = [];
+      let layoutY = currentY;
+
       for (const widget of node.customWidgets) {
         const size = widget.computeSize();
         const isCollapsed = widget instanceof SuperLoraWidget && widget.isCollapsedByTag(node);
         const height = widget instanceof SuperLoraWidget ? 34 : size[1];
         if (height === 0 || isCollapsed) continue;
-        renderable.push(widget);
+
+        renderable.push({ widget, y: layoutY, height });
+
+        const marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
+        layoutY += height + marginAfter;
       }
 
-      renderable.forEach((widget, index) => {
-        const size = widget.computeSize();
-        const height = widget instanceof SuperLoraWidget ? 34 : size[1];
-        widget.draw(ctx, node, node.size[0], currentY, height);
+      // Draw only visible widgets (viewport culling)
+      for (let i = 0; i < renderable.length; i++) {
+        const { widget, y, height } = renderable[i];
+        const isLast = i === renderable.length - 1;
+
+        // Skip if widget is completely outside viewport (performance optimization)
+        if (viewportBounds) {
+          const widgetBottom = y + height;
+          const widgetTop = y;
+          if (widgetBottom < viewportBounds.top || widgetTop > viewportBounds.bottom) {
+            // Widget is off-screen, skip drawing but update currentY
+            let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
+            if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
+              marginAfter = Math.max(marginDefault, 8);
+            }
+            currentY = y + height + marginAfter;
+            continue;
+          }
+        }
+
+        // Draw visible widget
+        widget.draw(ctx, node, node.size[0], y, height);
         let marginAfter = (widget instanceof SuperLoraTagWidget && widget.isCollapsed()) ? 0 : marginDefault;
-        const isLast = index === renderable.length - 1;
         if (isLast && widget instanceof SuperLoraTagWidget && widget.isCollapsed()) {
           marginAfter = Math.max(marginDefault, 8);
         }
-        currentY += height + marginAfter;
-      });
+        currentY = y + height + marginAfter;
+      }
     }
 
     if (isBypassed) {
@@ -408,6 +444,75 @@ export class SuperLoraNode {
         ctx.restore();
       } catch {}
     }
+  }
+
+  /**
+   * Get viewport bounds for culling off-screen widgets (Issue #9 performance)
+   * Returns null if bounds cannot be determined (draw everything)
+   */
+  private static getViewportBounds(node: any, ctx: any): { top: number; bottom: number } | null {
+    try {
+      // Get the canvas transform to determine what's visible
+      const canvas = app?.canvas;
+      if (!canvas) return null;
+
+      const ds = canvas.ds;
+      if (!ds || !ds.scale) return null;
+
+      // Get canvas element bounds
+      const canvasEl = canvas.canvas;
+      if (!canvasEl) return null;
+
+      const scale = ds.scale;
+      const offset = ds.offset || [0, 0];
+      const nodePos = node.pos || [0, 0];
+
+      // Calculate visible area in node-local coordinates
+      const canvasHeight = canvasEl.height / scale;
+      const viewTop = -offset[1] / scale - nodePos[1];
+      const viewBottom = viewTop + canvasHeight;
+
+      // Add some padding to avoid popping
+      const padding = 50;
+      return {
+        top: Math.max(0, viewTop - padding),
+        bottom: viewBottom + padding,
+      };
+    } catch {
+      return null; // Fall back to drawing everything
+    }
+  }
+
+  /**
+   * Collapse all tag groups (Issue #9 performance request)
+   */
+  static collapseAllTags(node: any): void {
+    if (!node.customWidgets) return;
+    
+    for (const widget of node.customWidgets) {
+      if (widget instanceof SuperLoraTagWidget) {
+        widget.value.collapsed = true;
+      }
+    }
+    
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas?.(true, true);
+  }
+
+  /**
+   * Expand all tag groups (Issue #9 performance request)
+   */
+  static expandAllTags(node: any): void {
+    if (!node.customWidgets) return;
+    
+    for (const widget of node.customWidgets) {
+      if (widget instanceof SuperLoraTagWidget) {
+        widget.value.collapsed = false;
+      }
+    }
+    
+    this.calculateNodeSize(node);
+    node.setDirtyCanvas?.(true, true);
   }
 
   /**
