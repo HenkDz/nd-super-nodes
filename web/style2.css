@@ -1,0 +1,319 @@
+/**
+ * SCSS Variables for Super LoRA Loader
+ */
+.lora-row[data-v-f0163b44] {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  border: 1px solid #3a3a3a;
+  min-height: 28px;
+}
+.lora-row--disabled[data-v-f0163b44] {
+  opacity: 0.6;
+}
+.lora-row--disabled .lora-name[data-v-f0163b44],
+.lora-row--disabled .lora-trigger__text[data-v-f0163b44] {
+  color: #888;
+}
+.lora-row--hovered[data-v-f0163b44] {
+  border-color: #4a4a4a;
+}
+.lora-row--dragging[data-v-f0163b44] {
+  opacity: 0.8;
+  border-color: #ffd700;
+}
+.lora-toggle[data-v-f0163b44] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  background: #2a2a2a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.lora-toggle--enabled[data-v-f0163b44] {
+  border-color: #1b5e20;
+}
+.lora-toggle--enabled .lora-toggle__indicator[data-v-f0163b44] {
+  color: #2e7d32;
+}
+.lora-toggle__indicator[data-v-f0163b44] {
+  font-size: 12px;
+  color: transparent;
+}
+.lora-tag-chip[data-v-f0163b44] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 2px;
+  background: #333;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.lora-name[data-v-f0163b44] {
+  flex: 1;
+  min-width: 100px;
+  padding: 2px 4px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lora-name[data-v-f0163b44]:hover {
+  color: #ffd700;
+}
+.lora-trigger[data-v-f0163b44] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: #2f2f2f;
+  border-radius: 3px;
+  min-width: 80px;
+  max-width: 150px;
+  cursor: pointer;
+}
+.lora-trigger__text[data-v-f0163b44], .lora-trigger__placeholder[data-v-f0163b44] {
+  flex: 1;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lora-trigger__text[data-v-f0163b44] {
+  color: #fff;
+}
+.lora-trigger__placeholder[data-v-f0163b44] {
+  color: #888;
+}
+.lora-trigger__refresh[data-v-f0163b44] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lora-trigger__refresh--auto[data-v-f0163b44] {
+  background: rgba(40, 167, 69, 0.85);
+  color: #111;
+}
+.lora-trigger__refresh--manual[data-v-f0163b44] {
+  background: rgba(74, 158, 255, 0.85);
+  color: #111;
+}
+.lora-trigger__refresh--empty[data-v-f0163b44] {
+  background: rgba(160, 160, 160, 0.7);
+  color: #111;
+}
+.lora-move[data-v-f0163b44] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lora-move__btn[data-v-f0163b44] {
+  width: 20px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: #555;
+  color: #fff;
+  font-size: 8px;
+  cursor: pointer;
+}
+.lora-move__btn[data-v-f0163b44]:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.lora-move__btn[data-v-f0163b44]:not(:disabled):hover {
+  background: #666;
+}
+.lora-strength[data-v-f0163b44] {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.lora-strength__btn[data-v-f0163b44] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: #666;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lora-strength__btn[data-v-f0163b44]:hover {
+  background: #777;
+}
+.lora-strength__value[data-v-f0163b44] {
+  width: 50px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid #4a4a4a;
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+.lora-strength__value--model[data-v-f0163b44] {
+  background: #3b2a4a;
+  color: #e5e5e5;
+}
+.lora-strength__value--clip[data-v-f0163b44] {
+  background: #4a3f1f;
+  color: #e5e5e5;
+}
+.lora-remove[data-v-f0163b44] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid #5a3a3a;
+  border-radius: 2px;
+  background: #3a2a2a;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lora-remove[data-v-f0163b44]:hover {
+  background: #4a3a3a;
+  border-color: #6a4a4a;
+}/**
+ * SCSS Variables for Super LoRA Loader
+ */
+.tag-header[data-v-961f13a8] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(135deg, #3d3d3d 0%, #2d2d2d 100%);
+  border-radius: 6px;
+  border: 1px solid #4a4a4a;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.tag-header[data-v-961f13a8]:hover {
+  border-color: #5a5a5a;
+}
+.tag-header:hover .tag-header__actions[data-v-961f13a8] {
+  opacity: 1;
+}
+.tag-header--collapsed .tag-header__arrow[data-v-961f13a8] {
+  color: #888;
+}
+.tag-header--drag-over[data-v-961f13a8] {
+  border-color: #ffd700;
+  background: linear-gradient(135deg, #4d4d3d 0%, #3d3d2d 100%);
+}
+.tag-header__arrow[data-v-961f13a8] {
+  font-size: 10px;
+  color: #aaa;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.tag-header__name[data-v-961f13a8] {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-header__count[data-v-961f13a8] {
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  font-size: 10px;
+  color: #aaa;
+  flex-shrink: 0;
+}
+.tag-header__actions[data-v-961f13a8] {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tag-header__action[data-v-961f13a8] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  cursor: pointer;
+}
+.tag-header__action[data-v-961f13a8]:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.super-lora-node-view[data-v-c255acb5] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background-color: var(--comfy-input-bg, #1a1a2e);
+  border-radius: 4px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  color: var(--comfy-text-color, #e0e0e0);
+}
+.empty-state[data-v-c255acb5] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  gap: 10px;
+}
+.empty-message[data-v-c255acb5] {
+  color: var(--comfy-text-muted, #888);
+  font-style: italic;
+}
+.add-lora-btn[data-v-c255acb5] {
+  background-color: var(--comfy-primary-color, #4a9eff);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.15s ease;
+}
+.add-lora-btn[data-v-c255acb5]:hover {
+  background-color: var(--comfy-primary-hover, #3a8eef);
+}
+.lora-list[data-v-c255acb5] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Drag and drop states */
+.dragging[data-v-c255acb5] {
+  opacity: 0.5;
+}
+.drop-target[data-v-c255acb5] {
+  border-color: var(--comfy-primary-color, #4a9eff) !important;
+  box-shadow: 0 0 4px var(--comfy-primary-color, #4a9eff);
+}

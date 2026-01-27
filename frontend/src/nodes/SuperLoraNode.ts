@@ -1,6 +1,8 @@
 /**
  * Super LoRA Loader Node - Advanced Implementation
  * Based on rgthree's sophisticated custom widget system
+ * 
+ * Supports both Canvas (LiteGraph) and Vue (Nodes 2.0) rendering modes.
  */
 
 import { LoraConfig } from '@/types';
@@ -16,6 +18,13 @@ import { SuperLoraHeaderWidget } from './widgets/SuperLoraHeaderWidget';
 import { SuperLoraTagWidget } from './widgets/SuperLoraTagWidget';
 import { SuperLoraWidget } from './widgets/SuperLoraWidget';
 import { setWidgetAPI } from './widgets/WidgetAPI';
+import { 
+  isNodes2Enabled, 
+  getCachedRenderingMode,
+  mountVueToNode,
+  unmountVueFromNode,
+  isVueMounted 
+} from '@/utils';
 
 // ComfyUI imports
 const app: any = (window as any).app;
@@ -130,6 +139,24 @@ export class SuperLoraNode {
           return !(nm === 'lora_bundle' || nm.startsWith('lora_'));
         });
       } catch {}
+      
+      // In Nodes 2.0 mode, mount Vue component
+      if (isNodes2Enabled()) {
+        SuperLoraNode.mountVueView(this);
+      }
+    };
+
+    // Handle node removal - clean up Vue app if mounted
+    const originalOnRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function() {
+      // Unmount Vue app if we had one
+      if (isVueMounted(this.id)) {
+        unmountVueFromNode(this.id);
+      }
+      
+      if (originalOnRemoved) {
+        originalOnRemoved.apply(this, arguments);
+      }
     };
 
     // Override drawing and interaction
@@ -138,7 +165,10 @@ export class SuperLoraNode {
       if (originalOnDrawForeground) {
         originalOnDrawForeground.call(this, ctx);
       }
-      SuperLoraNode.drawCustomWidgets(this, ctx);
+      // Skip Canvas drawing if Vue is rendering
+      if (!isVueMounted(this.id)) {
+        SuperLoraNode.drawCustomWidgets(this, ctx);
+      }
     };
 
     const originalOnMouseDown = nodeType.prototype.onMouseDown;
@@ -1410,5 +1440,174 @@ export class SuperLoraNode {
     form.appendChild(input); form.appendChild(submit);
     panel.appendChild(header); panel.appendChild(form); overlay.appendChild(panel); document.body.appendChild(overlay);
     setTimeout(() => input.focus(), 0);
+  }
+
+  // ============================================================================
+  // Vue / Nodes 2.0 Integration
+  // ============================================================================
+
+  /**
+   * Mount Vue view for Nodes 2.0 mode.
+   * Called when node is created and Nodes 2.0 is detected.
+   */
+  private static async mountVueView(node: any): Promise<void> {
+    try {
+      // Dynamic import to avoid loading Vue in Canvas mode
+      const [{ default: SuperLoraNodeView }, { mountVueToNode }] = await Promise.all([
+        import('@/components/SuperLoraNodeView.vue'),
+        import('@/utils/vue-integration').then(m => ({ mountVueToNode: m.mountVueToNode }))
+      ]);
+      
+      // Build props from current node state
+      const props = SuperLoraNode.buildVueProps(node);
+      
+      // Mount the Vue component
+      mountVueToNode({
+        node,
+        component: SuperLoraNodeView,
+        props,
+        containerClass: 'super-lora-vue-root',
+      });
+      
+      console.log(`[ND Super Nodes] Vue view mounted for node ${node.id}`);
+    } catch (error) {
+      console.error('[ND Super Nodes] Failed to mount Vue view:', error);
+      // Fall back to Canvas rendering (isVueMounted will return false)
+    }
+  }
+
+  /**
+   * Build Vue props from node state.
+   */
+  private static buildVueProps(node: any): Record<string, any> {
+    const customWidgets = node._superLoraWidgets || [];
+    const tagsEnabled = app?.ui?.settings?.getSettingValue?.('superLora.enableTags', false) ?? false;
+    const showSeparateStrengths = app?.ui?.settings?.getSettingValue?.('superLora.showSeparateStrengths', false) ?? false;
+    
+    // Extract LoRA data from widgets
+    const loras: Array<{
+      name: string;
+      enabled: boolean;
+      strength: number;
+      clipStrength: number;
+      tag?: string;
+      triggerWords?: string[];
+      isLoading?: boolean;
+    }> = [];
+    
+    const tags: Array<{
+      name: string;
+      collapsed: boolean;
+      loraCount: number;
+    }> = [];
+    
+    const tagCounts = new Map<string, number>();
+    
+    for (const widget of customWidgets) {
+      if (widget instanceof SuperLoraWidget) {
+        const loraValue = widget.value || {};
+        const tagName = loraValue.tag || '';
+        
+        loras.push({
+          name: loraValue.lora || '',
+          enabled: loraValue.enabled !== false,
+          strength: loraValue.strength ?? 1.0,
+          clipStrength: loraValue.clipStrength ?? loraValue.strength ?? 1.0,
+          tag: tagName,
+          triggerWords: loraValue.triggerWords || [],
+          isLoading: widget._isLoading || false,
+        });
+        
+        if (tagName) {
+          tagCounts.set(tagName, (tagCounts.get(tagName) || 0) + 1);
+        }
+      } else if (widget instanceof SuperLoraTagWidget) {
+        const tagValue = widget.value || {};
+        tags.push({
+          name: tagValue.tag || '',
+          collapsed: tagValue.collapsed === true,
+          loraCount: 0, // Will be updated below
+        });
+      }
+    }
+    
+    // Update tag counts
+    for (const tag of tags) {
+      tag.loraCount = tagCounts.get(tag.name) || 0;
+    }
+    
+    return {
+      loras,
+      tags,
+      tagsEnabled,
+      showSeparateStrengths,
+      nodeId: node.id,
+      // Event handlers that bridge back to node methods
+      onToggleEnabled: (index: number, enabled: boolean) => {
+        const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          loraWidgets[index].value.enabled = enabled;
+          SuperLoraNode.syncExecutionWidgets(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onChangeStrength: (index: number, strength: number, isClip: boolean) => {
+        const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          if (isClip) {
+            loraWidgets[index].value.clipStrength = strength;
+          } else {
+            loraWidgets[index].value.strength = strength;
+          }
+          SuperLoraNode.syncExecutionWidgets(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onRemoveLora: (index: number) => {
+        const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          SuperLoraNode.removeLoraWidget(node, loraWidgets[index]);
+        }
+      },
+      onCopyTriggerWords: (index: number) => {
+        const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          const words = loraWidgets[index].value.triggerWords || [];
+          if (words.length) {
+            navigator.clipboard.writeText(words.join(', ')).catch(() => {});
+            SuperLoraNode.showToast('Trigger words copied!');
+          }
+        }
+      },
+      onToggleTag: (tagName: string, collapsed: boolean) => {
+        const tagWidget = customWidgets.find((w: any) => 
+          w instanceof SuperLoraTagWidget && w.value?.tag === tagName
+        );
+        if (tagWidget) {
+          tagWidget.value.collapsed = collapsed;
+          SuperLoraNode.calculateNodeSize(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onAddLora: (tagName?: string) => {
+        SuperLoraNode.showLoraSelector(node);
+      },
+      onReorderLora: (fromIndex: number, toIndex: number) => {
+        const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
+        if (loraWidgets[fromIndex] && loraWidgets[toIndex]) {
+          // Reorder in the _superLoraWidgets array
+          const fromWidget = loraWidgets[fromIndex];
+          const toWidget = loraWidgets[toIndex];
+          const fromIdx = customWidgets.indexOf(fromWidget);
+          const toIdx = customWidgets.indexOf(toWidget);
+          if (fromIdx >= 0 && toIdx >= 0) {
+            customWidgets.splice(fromIdx, 1);
+            customWidgets.splice(toIdx, 0, fromWidget);
+            SuperLoraNode.syncExecutionWidgets(node);
+            app.graph?.setDirtyCanvas?.(true, true);
+          }
+        }
+      },
+    };
   }
 }

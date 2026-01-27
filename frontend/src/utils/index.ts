@@ -55,3 +55,16 @@ export {
   createDispatch,
   useNodeState,
 } from './state-sync';
+
+// Vue integration (Nodes 2.0)
+export {
+  mountVueToNode,
+  unmountVueFromNode,
+  cleanupAllVueApps,
+  isVueMounted,
+  updateVueProps,
+  useLoraRowState,
+  useTagHeaderState,
+  useRenderingMode,
+  type VueNodeConfig,
+} from './vue-integration';

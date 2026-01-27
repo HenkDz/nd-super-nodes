@@ -1,4 +1,60 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/SuperLoraNodeView-ER6v5Q3t.js","style2.css"])))=>i.map(i=>d[i]);
 import { app as app$1 } from "/scripts/app.js";
+import { createApp, h, reactive, ref, onUnmounted } from "vue";
+const scriptRel = "modulepreload";
+const assetsURL = function(dep) {
+  return "/" + dep;
+};
+const seen = {};
+const __vitePreload = function preload(baseModule, deps, importerUrl) {
+  let promise = Promise.resolve();
+  if (deps && deps.length > 0) {
+    let allSettled = function(promises$2) {
+      return Promise.all(promises$2.map((p) => Promise.resolve(p).then((value$1) => ({
+        status: "fulfilled",
+        value: value$1
+      }), (reason) => ({
+        status: "rejected",
+        reason
+      }))));
+    };
+    document.getElementsByTagName("link");
+    const cspNonceMeta = document.querySelector("meta[property=csp-nonce]");
+    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    promise = allSettled(deps.map((dep) => {
+      dep = assetsURL(dep);
+      if (dep in seen) return;
+      seen[dep] = true;
+      const isCss = dep.endsWith(".css");
+      const cssSelector = isCss ? '[rel="stylesheet"]' : "";
+      if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) return;
+      const link = document.createElement("link");
+      link.rel = isCss ? "stylesheet" : scriptRel;
+      if (!isCss) link.as = "script";
+      link.crossOrigin = "";
+      link.href = dep;
+      if (cspNonce) link.setAttribute("nonce", cspNonce);
+      document.head.appendChild(link);
+      if (isCss) return new Promise((res, rej) => {
+        link.addEventListener("load", res);
+        link.addEventListener("error", () => rej(/* @__PURE__ */ new Error(`Unable to preload CSS for ${dep}`)));
+      });
+    }));
+  }
+  function handlePreloadError(err$2) {
+    const e$1 = new Event("vite:preloadError", { cancelable: true });
+    e$1.payload = err$2;
+    window.dispatchEvent(e$1);
+    if (!e$1.defaultPrevented) throw err$2;
+  }
+  return promise.then((res) => {
+    for (const item of res || []) {
+      if (item.status !== "rejected") continue;
+      handlePreloadError(item.reason);
+    }
+    return baseModule().catch(handlePreloadError);
+  });
+};
 class LoraService {
   constructor() {
     this.availableLoras = [];
@@ -1720,16 +1776,16 @@ const _FilePickerService = class _FilePickerService {
     }
     const marker = "__ndSuperNodesRefreshWrapped";
     const service = this;
-    const seen = /* @__PURE__ */ new Set();
+    const seen2 = /* @__PURE__ */ new Set();
     let hookedAny = false;
     let cursor = source;
     while (cursor && cursor !== Object.prototype && cursor !== Function.prototype) {
       const keys = Object.getOwnPropertyNames(cursor);
       for (const key of keys) {
-        if (seen.has(key)) {
+        if (seen2.has(key)) {
           continue;
         }
-        seen.add(key);
+        seen2.add(key);
         if (!/refresh/i.test(key) || key === marker) {
           continue;
         }
@@ -3224,6 +3280,360 @@ class SuperLoraHeaderWidget extends SuperLoraBaseWidget {
     return [450, 35];
   }
 }
+function isNodes2Enabled() {
+  try {
+    const win = window;
+    if (typeof win.__COMFYUI_NODES_2_ENABLED__ === "boolean") {
+      return win.__COMFYUI_NODES_2_ENABLED__;
+    }
+    const app2 = win.app;
+    if (app2?.extensionManager?.nodeComponents) {
+      return true;
+    }
+    if (app2?.ui?.settings) {
+      const nodes2Setting = app2.ui.settings.getSettingValue?.("Comfy.UseNodes2", null);
+      if (nodes2Setting === true) {
+        return true;
+      }
+      const nodes2AltSetting = app2.ui.settings.getSettingValue?.("Comfy.Nodes2.Enabled", null);
+      if (nodes2AltSetting === true) {
+        return true;
+      }
+    }
+    if (typeof document !== "undefined") {
+      const vueRoot = document.querySelector("[data-v-app]") || document.querySelector("#comfyui-vue-app") || document.querySelector(".comfy-vue-nodes");
+      if (vueRoot) {
+        return true;
+      }
+    }
+    if (win.Vue || win.__VUE__) {
+      if (win.__COMFYUI_VUE_NODES__) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.warn("[ND Super Nodes] Error detecting Nodes 2.0 mode:", error);
+    return false;
+  }
+}
+function getRenderingMode() {
+  return isNodes2Enabled() ? "vue" : "canvas";
+}
+let cachedMode = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5e3;
+function getCachedRenderingMode() {
+  const now = Date.now();
+  if (cachedMode && now - cacheTimestamp < CACHE_TTL) {
+    return cachedMode;
+  }
+  cachedMode = getRenderingMode();
+  cacheTimestamp = now;
+  return cachedMode;
+}
+function clearRenderingModeCache() {
+  cachedMode = null;
+  cacheTimestamp = 0;
+}
+function onRenderingModeChange(callback) {
+  const app2 = window.app;
+  const handleSettingsChange = () => {
+    const oldMode = cachedMode;
+    clearRenderingModeCache();
+    const newMode = getCachedRenderingMode();
+    if (oldMode !== newMode) {
+      callback(newMode);
+    }
+  };
+  if (app2?.ui?.settings) {
+    try {
+      const originalSet = app2.ui.settings.setSettingValue?.bind(app2.ui.settings);
+      if (typeof originalSet === "function") {
+        app2.ui.settings.setSettingValue = function(key, value) {
+          const result = originalSet(key, value);
+          if (key.toLowerCase().includes("nodes2") || key.toLowerCase().includes("vue")) {
+            setTimeout(handleSettingsChange, 100);
+          }
+          return result;
+        };
+      }
+    } catch {
+    }
+  }
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible") {
+      setTimeout(handleSettingsChange, 200);
+    }
+  };
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", handleVisibility);
+  }
+  return () => {
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    }
+  };
+}
+function getNodes2Capabilities() {
+  const app2 = window.app;
+  const mode = getRenderingMode();
+  return {
+    mode,
+    hasVueComponents: mode === "vue",
+    hasCanvasWidgets: mode === "canvas",
+    hasNodeComponentRegistry: !!app2?.extensionManager?.nodeComponents,
+    hasReactiveState: !!window.Vue || !!window.__VUE__,
+    version: window.__COMFYUI_NODES_2_VERSION__ || null
+  };
+}
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    const mode = getRenderingMode();
+    console.log(`[ND Super Nodes] Rendering mode detected: ${mode}`);
+  }, 1e3);
+}
+class RendererRegistry {
+  constructor() {
+    this.renderers = /* @__PURE__ */ new Map();
+    this.modeChangeListeners = [];
+    this.initialized = false;
+    this.currentMode = "canvas";
+  }
+  /**
+   * Initialize the registry and set up mode change detection.
+   */
+  initialize() {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.currentMode = getCachedRenderingMode();
+    onRenderingModeChange((newMode) => {
+      if (this.currentMode !== newMode) {
+        console.log(`[ND Super Nodes] Rendering mode changed: ${this.currentMode} -> ${newMode}`);
+        this.currentMode = newMode;
+        this.notifyModeChange(newMode);
+      }
+    });
+  }
+  /**
+   * Register a dual-mode renderer.
+   */
+  register(renderer) {
+    if (this.renderers.has(renderer.id)) {
+      console.warn(`[ND Super Nodes] Renderer "${renderer.id}" already registered, overwriting`);
+    }
+    this.renderers.set(renderer.id, renderer);
+  }
+  /**
+   * Get a renderer by ID.
+   */
+  get(id) {
+    return this.renderers.get(id);
+  }
+  /**
+   * Get the current rendering mode.
+   */
+  getMode() {
+    return this.currentMode;
+  }
+  /**
+   * Check if currently in Canvas mode.
+   */
+  isCanvasMode() {
+    return this.currentMode === "canvas";
+  }
+  /**
+   * Check if currently in Vue mode.
+   */
+  isVueMode() {
+    return this.currentMode === "vue";
+  }
+  /**
+   * Subscribe to mode changes.
+   */
+  onModeChange(listener) {
+    this.modeChangeListeners.push(listener);
+    return () => {
+      const idx = this.modeChangeListeners.indexOf(listener);
+      if (idx >= 0) this.modeChangeListeners.splice(idx, 1);
+    };
+  }
+  notifyModeChange(mode) {
+    for (const listener of this.modeChangeListeners) {
+      try {
+        listener(mode);
+      } catch (error) {
+        console.error("[ND Super Nodes] Error in mode change listener:", error);
+      }
+    }
+  }
+}
+const rendererRegistry = new RendererRegistry();
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    rendererRegistry.initialize();
+  }, 500);
+}
+const mountedApps = /* @__PURE__ */ new Map();
+const nodeContainers = /* @__PURE__ */ new Map();
+function createNodeContainer(node, config) {
+  let existing = nodeContainers.get(node.id);
+  if (existing && existing.parentElement) {
+    return existing;
+  }
+  const container = document.createElement("div");
+  container.id = `super-lora-vue-${node.id}`;
+  container.className = config.containerClass || "super-lora-vue-container";
+  container.style.cssText = `
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: auto;
+    overflow: hidden;
+    z-index: ${config.zIndex ?? 10};
+  `;
+  const nodeElement = findNodeElement(node);
+  if (nodeElement) {
+    nodeElement.appendChild(container);
+    nodeContainers.set(node.id, container);
+    return container;
+  }
+  const graphCanvas = document.querySelector(".graph-canvas-container, .litegraph, #graph-canvas");
+  if (graphCanvas) {
+    graphCanvas.appendChild(container);
+    nodeContainers.set(node.id, container);
+    return container;
+  }
+  console.warn("[ND Super Nodes] Could not find mount point for Vue container");
+  return container;
+}
+function findNodeElement(node) {
+  const selectors = [
+    `[data-node-id="${node.id}"]`,
+    `#node-${node.id}`,
+    `.comfy-node[data-id="${node.id}"]`,
+    `.vue-node-${node.id}`
+  ];
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      return element;
+    }
+  }
+  return null;
+}
+function mountVueToNode(config) {
+  if (!isNodes2Enabled()) {
+    return null;
+  }
+  const { node, component, props = {} } = config;
+  unmountVueFromNode(node.id);
+  const container = createNodeContainer(node, config);
+  if (!container.parentElement) {
+    console.warn("[ND Super Nodes] Vue container has no parent, skipping mount");
+    return null;
+  }
+  const app2 = createApp({
+    render() {
+      return h(component, props);
+    }
+  });
+  app2.mount(container);
+  mountedApps.set(node.id, app2);
+  console.log(`[ND Super Nodes] Vue app mounted for node ${node.id}`);
+  return app2;
+}
+function unmountVueFromNode(nodeId) {
+  const app2 = mountedApps.get(nodeId);
+  if (app2) {
+    try {
+      app2.unmount();
+    } catch (e) {
+      console.warn(`[ND Super Nodes] Error unmounting Vue app for node ${nodeId}:`, e);
+    }
+    mountedApps.delete(nodeId);
+  }
+  const container = nodeContainers.get(nodeId);
+  if (container && container.parentElement) {
+    container.parentElement.removeChild(container);
+  }
+  nodeContainers.delete(nodeId);
+}
+function cleanupAllVueApps() {
+  for (const [nodeId] of mountedApps) {
+    unmountVueFromNode(nodeId);
+  }
+}
+function isVueMounted(nodeId) {
+  return mountedApps.has(nodeId);
+}
+function updateVueProps(nodeId, newProps) {
+  const app2 = mountedApps.get(nodeId);
+  const container = nodeContainers.get(nodeId);
+  if (!app2 || !container) {
+    return;
+  }
+  console.log(`[ND Super Nodes] Updating Vue props for node ${nodeId}`);
+}
+function useLoraRowState(initialState) {
+  const state = reactive({
+    name: initialState.name,
+    enabled: initialState.enabled,
+    strength: initialState.strength,
+    clipStrength: initialState.clipStrength ?? initialState.strength,
+    triggerWords: initialState.triggerWords ?? [],
+    isLoading: false,
+    error: null
+  });
+  return state;
+}
+function useTagHeaderState(initialState) {
+  const state = reactive({
+    name: initialState.name,
+    collapsed: initialState.collapsed,
+    loraCount: initialState.loraCount
+  });
+  return state;
+}
+function useRenderingMode() {
+  const mode = ref(getRenderingMode());
+  if (typeof document !== "undefined") {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        mode.value = getRenderingMode();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    onUnmounted(() => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    });
+  }
+  return {
+    mode,
+    isVueMode: () => mode.value === "vue",
+    isCanvasMode: () => mode.value === "canvas"
+  };
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    cleanupAllVueApps();
+  });
+}
+const vueIntegration = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  cleanupAllVueApps,
+  isVueMounted,
+  mountVueToNode,
+  mountedApps,
+  nodeContainers,
+  unmountVueFromNode,
+  updateVueProps,
+  useLoraRowState,
+  useRenderingMode,
+  useTagHeaderState
+}, Symbol.toStringTag, { value: "Module" }));
 const app = window.app;
 const LiteGraph = window.LiteGraph;
 const _SuperLoraNode = class _SuperLoraNode {
@@ -3312,13 +3722,27 @@ const _SuperLoraNode = class _SuperLoraNode {
         });
       } catch {
       }
+      if (isNodes2Enabled()) {
+        _SuperLoraNode.mountVueView(this);
+      }
+    };
+    const originalOnRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function() {
+      if (isVueMounted(this.id)) {
+        unmountVueFromNode(this.id);
+      }
+      if (originalOnRemoved) {
+        originalOnRemoved.apply(this, arguments);
+      }
     };
     const originalOnDrawForeground = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function(ctx) {
       if (originalOnDrawForeground) {
         originalOnDrawForeground.call(this, ctx);
       }
-      _SuperLoraNode.drawCustomWidgets(this, ctx);
+      if (!isVueMounted(this.id)) {
+        _SuperLoraNode.drawCustomWidgets(this, ctx);
+      }
     };
     const originalOnMouseDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function(event, pos) {
@@ -4422,6 +4846,144 @@ const _SuperLoraNode = class _SuperLoraNode {
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
     setTimeout(() => input.focus(), 0);
+  }
+  // ============================================================================
+  // Vue / Nodes 2.0 Integration
+  // ============================================================================
+  /**
+   * Mount Vue view for Nodes 2.0 mode.
+   * Called when node is created and Nodes 2.0 is detected.
+   */
+  static async mountVueView(node) {
+    try {
+      const [{ default: SuperLoraNodeView }, { mountVueToNode: mountVueToNode2 }] = await Promise.all([
+        __vitePreload(() => import("./assets/SuperLoraNodeView-ER6v5Q3t.js"), true ? __vite__mapDeps([0,1]) : void 0),
+        __vitePreload(() => Promise.resolve().then(() => vueIntegration), true ? void 0 : void 0).then((m) => ({ mountVueToNode: m.mountVueToNode }))
+      ]);
+      const props = _SuperLoraNode.buildVueProps(node);
+      mountVueToNode2({
+        node,
+        component: SuperLoraNodeView,
+        props,
+        containerClass: "super-lora-vue-root"
+      });
+      console.log(`[ND Super Nodes] Vue view mounted for node ${node.id}`);
+    } catch (error) {
+      console.error("[ND Super Nodes] Failed to mount Vue view:", error);
+    }
+  }
+  /**
+   * Build Vue props from node state.
+   */
+  static buildVueProps(node) {
+    const customWidgets = node._superLoraWidgets || [];
+    const tagsEnabled = app?.ui?.settings?.getSettingValue?.("superLora.enableTags", false) ?? false;
+    const showSeparateStrengths = app?.ui?.settings?.getSettingValue?.("superLora.showSeparateStrengths", false) ?? false;
+    const loras = [];
+    const tags = [];
+    const tagCounts = /* @__PURE__ */ new Map();
+    for (const widget of customWidgets) {
+      if (widget instanceof SuperLoraWidget) {
+        const loraValue = widget.value || {};
+        const tagName = loraValue.tag || "";
+        loras.push({
+          name: loraValue.lora || "",
+          enabled: loraValue.enabled !== false,
+          strength: loraValue.strength ?? 1,
+          clipStrength: loraValue.clipStrength ?? loraValue.strength ?? 1,
+          tag: tagName,
+          triggerWords: loraValue.triggerWords || [],
+          isLoading: widget._isLoading || false
+        });
+        if (tagName) {
+          tagCounts.set(tagName, (tagCounts.get(tagName) || 0) + 1);
+        }
+      } else if (widget instanceof SuperLoraTagWidget) {
+        const tagValue = widget.value || {};
+        tags.push({
+          name: tagValue.tag || "",
+          collapsed: tagValue.collapsed === true,
+          loraCount: 0
+          // Will be updated below
+        });
+      }
+    }
+    for (const tag of tags) {
+      tag.loraCount = tagCounts.get(tag.name) || 0;
+    }
+    return {
+      loras,
+      tags,
+      tagsEnabled,
+      showSeparateStrengths,
+      nodeId: node.id,
+      // Event handlers that bridge back to node methods
+      onToggleEnabled: (index, enabled) => {
+        const loraWidgets = customWidgets.filter((w) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          loraWidgets[index].value.enabled = enabled;
+          _SuperLoraNode.syncExecutionWidgets(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onChangeStrength: (index, strength, isClip) => {
+        const loraWidgets = customWidgets.filter((w) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          if (isClip) {
+            loraWidgets[index].value.clipStrength = strength;
+          } else {
+            loraWidgets[index].value.strength = strength;
+          }
+          _SuperLoraNode.syncExecutionWidgets(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onRemoveLora: (index) => {
+        const loraWidgets = customWidgets.filter((w) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          _SuperLoraNode.removeLoraWidget(node, loraWidgets[index]);
+        }
+      },
+      onCopyTriggerWords: (index) => {
+        const loraWidgets = customWidgets.filter((w) => w instanceof SuperLoraWidget);
+        if (loraWidgets[index]) {
+          const words = loraWidgets[index].value.triggerWords || [];
+          if (words.length) {
+            navigator.clipboard.writeText(words.join(", ")).catch(() => {
+            });
+            _SuperLoraNode.showToast("Trigger words copied!");
+          }
+        }
+      },
+      onToggleTag: (tagName, collapsed) => {
+        const tagWidget = customWidgets.find(
+          (w) => w instanceof SuperLoraTagWidget && w.value?.tag === tagName
+        );
+        if (tagWidget) {
+          tagWidget.value.collapsed = collapsed;
+          _SuperLoraNode.calculateNodeSize(node);
+          app.graph?.setDirtyCanvas?.(true, true);
+        }
+      },
+      onAddLora: (tagName) => {
+        _SuperLoraNode.showLoraSelector(node);
+      },
+      onReorderLora: (fromIndex, toIndex) => {
+        const loraWidgets = customWidgets.filter((w) => w instanceof SuperLoraWidget);
+        if (loraWidgets[fromIndex] && loraWidgets[toIndex]) {
+          const fromWidget = loraWidgets[fromIndex];
+          const toWidget = loraWidgets[toIndex];
+          const fromIdx = customWidgets.indexOf(fromWidget);
+          const toIdx = customWidgets.indexOf(toWidget);
+          if (fromIdx >= 0 && toIdx >= 0) {
+            customWidgets.splice(fromIdx, 1);
+            customWidgets.splice(toIdx, 0, fromWidget);
+            _SuperLoraNode.syncExecutionWidgets(node);
+            app.graph?.setDirtyCanvas?.(true, true);
+          }
+        }
+      }
+    };
   }
 };
 _SuperLoraNode.NODE_WIDGET_TOP_OFFSET = 68;
@@ -6018,200 +6580,6 @@ const nodeEnhancerExtension = {
 console.log(`${EXTENSION_NAME$1}: Registering extension with ComfyUI`);
 app$1.registerExtension(nodeEnhancerExtension);
 console.log(`${EXTENSION_NAME$1}: Extension registered successfully`);
-function isNodes2Enabled() {
-  try {
-    const win = window;
-    if (typeof win.__COMFYUI_NODES_2_ENABLED__ === "boolean") {
-      return win.__COMFYUI_NODES_2_ENABLED__;
-    }
-    const app2 = win.app;
-    if (app2?.extensionManager?.nodeComponents) {
-      return true;
-    }
-    if (app2?.ui?.settings) {
-      const nodes2Setting = app2.ui.settings.getSettingValue?.("Comfy.UseNodes2", null);
-      if (nodes2Setting === true) {
-        return true;
-      }
-      const nodes2AltSetting = app2.ui.settings.getSettingValue?.("Comfy.Nodes2.Enabled", null);
-      if (nodes2AltSetting === true) {
-        return true;
-      }
-    }
-    if (typeof document !== "undefined") {
-      const vueRoot = document.querySelector("[data-v-app]") || document.querySelector("#comfyui-vue-app") || document.querySelector(".comfy-vue-nodes");
-      if (vueRoot) {
-        return true;
-      }
-    }
-    if (win.Vue || win.__VUE__) {
-      if (win.__COMFYUI_VUE_NODES__) {
-        return true;
-      }
-    }
-    return false;
-  } catch (error) {
-    console.warn("[ND Super Nodes] Error detecting Nodes 2.0 mode:", error);
-    return false;
-  }
-}
-function getRenderingMode() {
-  return isNodes2Enabled() ? "vue" : "canvas";
-}
-let cachedMode = null;
-let cacheTimestamp = 0;
-const CACHE_TTL = 5e3;
-function getCachedRenderingMode() {
-  const now = Date.now();
-  if (cachedMode && now - cacheTimestamp < CACHE_TTL) {
-    return cachedMode;
-  }
-  cachedMode = getRenderingMode();
-  cacheTimestamp = now;
-  return cachedMode;
-}
-function clearRenderingModeCache() {
-  cachedMode = null;
-  cacheTimestamp = 0;
-}
-function onRenderingModeChange(callback) {
-  const app2 = window.app;
-  const handleSettingsChange = () => {
-    const oldMode = cachedMode;
-    clearRenderingModeCache();
-    const newMode = getCachedRenderingMode();
-    if (oldMode !== newMode) {
-      callback(newMode);
-    }
-  };
-  if (app2?.ui?.settings) {
-    try {
-      const originalSet = app2.ui.settings.setSettingValue?.bind(app2.ui.settings);
-      if (typeof originalSet === "function") {
-        app2.ui.settings.setSettingValue = function(key, value) {
-          const result = originalSet(key, value);
-          if (key.toLowerCase().includes("nodes2") || key.toLowerCase().includes("vue")) {
-            setTimeout(handleSettingsChange, 100);
-          }
-          return result;
-        };
-      }
-    } catch {
-    }
-  }
-  const handleVisibility = () => {
-    if (document.visibilityState === "visible") {
-      setTimeout(handleSettingsChange, 200);
-    }
-  };
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", handleVisibility);
-  }
-  return () => {
-    if (typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", handleVisibility);
-    }
-  };
-}
-function getNodes2Capabilities() {
-  const app2 = window.app;
-  const mode = getRenderingMode();
-  return {
-    mode,
-    hasVueComponents: mode === "vue",
-    hasCanvasWidgets: mode === "canvas",
-    hasNodeComponentRegistry: !!app2?.extensionManager?.nodeComponents,
-    hasReactiveState: !!window.Vue || !!window.__VUE__,
-    version: window.__COMFYUI_NODES_2_VERSION__ || null
-  };
-}
-if (typeof window !== "undefined") {
-  setTimeout(() => {
-    const mode = getRenderingMode();
-    console.log(`[ND Super Nodes] Rendering mode detected: ${mode}`);
-  }, 1e3);
-}
-class RendererRegistry {
-  constructor() {
-    this.renderers = /* @__PURE__ */ new Map();
-    this.modeChangeListeners = [];
-    this.initialized = false;
-    this.currentMode = "canvas";
-  }
-  /**
-   * Initialize the registry and set up mode change detection.
-   */
-  initialize() {
-    if (this.initialized) return;
-    this.initialized = true;
-    this.currentMode = getCachedRenderingMode();
-    onRenderingModeChange((newMode) => {
-      if (this.currentMode !== newMode) {
-        console.log(`[ND Super Nodes] Rendering mode changed: ${this.currentMode} -> ${newMode}`);
-        this.currentMode = newMode;
-        this.notifyModeChange(newMode);
-      }
-    });
-  }
-  /**
-   * Register a dual-mode renderer.
-   */
-  register(renderer) {
-    if (this.renderers.has(renderer.id)) {
-      console.warn(`[ND Super Nodes] Renderer "${renderer.id}" already registered, overwriting`);
-    }
-    this.renderers.set(renderer.id, renderer);
-  }
-  /**
-   * Get a renderer by ID.
-   */
-  get(id) {
-    return this.renderers.get(id);
-  }
-  /**
-   * Get the current rendering mode.
-   */
-  getMode() {
-    return this.currentMode;
-  }
-  /**
-   * Check if currently in Canvas mode.
-   */
-  isCanvasMode() {
-    return this.currentMode === "canvas";
-  }
-  /**
-   * Check if currently in Vue mode.
-   */
-  isVueMode() {
-    return this.currentMode === "vue";
-  }
-  /**
-   * Subscribe to mode changes.
-   */
-  onModeChange(listener) {
-    this.modeChangeListeners.push(listener);
-    return () => {
-      const idx = this.modeChangeListeners.indexOf(listener);
-      if (idx >= 0) this.modeChangeListeners.splice(idx, 1);
-    };
-  }
-  notifyModeChange(mode) {
-    for (const listener of this.modeChangeListeners) {
-      try {
-        listener(mode);
-      } catch (error) {
-        console.error("[ND Super Nodes] Error in mode change listener:", error);
-      }
-    }
-  }
-}
-const rendererRegistry = new RendererRegistry();
-if (typeof window !== "undefined") {
-  setTimeout(() => {
-    rendererRegistry.initialize();
-  }, 500);
-}
 const EXTENSION_NAME = "SuperLoraLoader";
 const NODE_TYPE = "NdSuperLoraLoader";
 let currentRenderingMode = "canvas";
