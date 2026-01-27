@@ -124,16 +124,24 @@ export class SuperLoraNode {
    * Set up the node type with custom widgets
    */
   static setup(nodeType: any, _nodeData: any): void {
+    console.log('[ND Super Nodes] setup() called, nodeType:', nodeType?.name || nodeType?.type || 'unknown');
+    
     const originalNodeCreated = nodeType.prototype.onNodeCreated;
     
     nodeType.prototype.onNodeCreated = function() {
+      console.log('[ND Super Nodes] onNodeCreated() called for node:', this.id, this.type);
+      
       if (originalNodeCreated) {
         originalNodeCreated.apply(this, arguments);
       }
       
+      console.log('[ND Super Nodes] Calling setupAdvancedNode...');
       SuperLoraNode.setupAdvancedNode(this);
+      console.log('[ND Super Nodes] setupAdvancedNode complete, customWidgets:', this.customWidgets?.length || 0);
+      
       // Hide the lora_bundle widget created by ComfyUI from backend STRING input
       // Call both immediately and after a delay (widgets may be added asynchronously)
+      console.log('[ND Super Nodes] Hiding lora_bundle widget, current widgets:', this.widgets?.map((w: any) => w?.name));
       SuperLoraNode.hideLoraBundleWidget(this);
       const nodeRef = this;
       setTimeout(() => SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
@@ -426,7 +434,14 @@ export class SuperLoraNode {
    * Custom drawing for all widgets
    * Performance optimized with viewport culling (Issue #9)
    */
+  private static _drawDebugLogged = false;
   static drawCustomWidgets(node: any, ctx: any): void {
+    // Debug log once per session
+    if (!this._drawDebugLogged) {
+      console.log('[ND Super Nodes] drawCustomWidgets called, node.customWidgets:', node.customWidgets?.length || 0);
+      this._drawDebugLogged = true;
+    }
+    
     if (!node.customWidgets) return;
     const isBypassed = SuperLoraNode.isNodeBypassed(node);
     const marginDefault = SuperLoraNode.MARGIN_SMALL;

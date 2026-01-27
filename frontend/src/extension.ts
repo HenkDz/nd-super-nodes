@@ -5,6 +5,21 @@
  * Supports both legacy Canvas (LiteGraph) and Nodes 2.0 (Vue) rendering modes.
  */
 
+// Debug: Log immediately when script starts parsing
+console.log('[ND Super Nodes] Extension script loading...');
+// Temporarily show visual indicator that script loaded (remove after debugging)
+if (typeof document !== 'undefined') {
+  const debugMarker = document.createElement('div');
+  debugMarker.id = 'nd-super-nodes-debug';
+  debugMarker.style.cssText = 'position:fixed;top:5px;right:5px;background:lime;color:black;padding:4px 8px;z-index:999999;font-size:11px;border-radius:3px;';
+  debugMarker.textContent = 'ND Super Nodes JS Loaded';
+  setTimeout(() => {
+    document.body?.appendChild(debugMarker);
+    // Auto-remove after 5 seconds
+    setTimeout(() => debugMarker.remove(), 5000);
+  }, 1000);
+}
+
 // @ts-ignore ComfyUI provides this at runtime
 import { app } from '/scripts/app.js';
 import { ComfyExtension } from './types';
@@ -20,6 +35,9 @@ import {
   Nodes2Capabilities,
   RenderingMode
 } from './utils';
+
+// Debug: Log after imports
+console.log('[ND Super Nodes] All imports successful, app =', typeof app);
 
 // Extension configuration
 const EXTENSION_NAME = 'SuperLoraLoader';
@@ -143,30 +161,35 @@ const superLoraExtension: ComfyExtension = {
    * Called before a node type is registered
    */
   beforeRegisterNodeDef(nodeType: any, nodeData: any): void {
+    // Debug: Log ALL node registrations to find what's being called
+    console.log(`[ND Super Nodes] beforeRegisterNodeDef: "${nodeData?.name}" (looking for "${NODE_TYPE}")`);
+    
     // Initialize rendering mode detection once (on first node registration)
     if (currentRenderingMode === 'canvas' && !nodes2Capabilities) {
       initRenderingModeDetection();
     }
 
     if (nodeData.name === NODE_TYPE) {
-      console.log(`Super LoRA Loader: Registering node type (mode: ${currentRenderingMode})`);
+      console.log(`[ND Super Nodes] *** MATCHED our node: ${NODE_TYPE} ***`);
+      console.log(`[ND Super Nodes] Registering node type (mode: ${currentRenderingMode})`);
 
       // Kick off async initialization without blocking node registration.
       SuperLoraNode.initialize()
         .then(() => {
-          console.log('Super LoRA Loader: Services initialized');
+          console.log('[ND Super Nodes] Services initialized');
         })
         .catch((err) => {
-          console.error('Super LoRA Loader: Initialization error', err);
+          console.error('[ND Super Nodes] Initialization error', err);
         });
 
       try {
         // Set up the node type immediately so ComfyUI can register it synchronously.
+        console.log('[ND Super Nodes] Calling SuperLoraNode.setup()...');
         SuperLoraNode.setup(nodeType, nodeData);
-        console.log('Super LoRA Loader: Node type registered successfully');
+        console.log('[ND Super Nodes] Node type registered successfully');
       } catch (err) {
         // Never block node registration on errors here; log and continue so the node still exists
-        console.error('Super LoRA Loader: Error during node setup; continuing with default registration', err);
+        console.error('[ND Super Nodes] Error during node setup:', err);
       }
     }
   },
@@ -232,9 +255,15 @@ const superLoraExtension: ComfyExtension = {
 };
 
 // Register the extension with ComfyUI (immediate)
-console.log('Super LoRA Loader: Registering extension with ComfyUI');
-app.registerExtension(superLoraExtension);
-console.log('Super LoRA Loader: Extension registered successfully');
+console.log('[ND Super Nodes] Registering extension with ComfyUI...');
+console.log('[ND Super Nodes] Extension has beforeRegisterNodeDef:', typeof superLoraExtension.beforeRegisterNodeDef);
+console.log('[ND Super Nodes] Extension name:', superLoraExtension.name);
+try {
+  app.registerExtension(superLoraExtension);
+  console.log('[ND Super Nodes] Extension registered successfully!');
+} catch (err) {
+  console.error('[ND Super Nodes] Failed to register extension:', err);
+}
 
 // Export for potential external use
 export default superLoraExtension;

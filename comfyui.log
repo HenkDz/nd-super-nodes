@@ -1,0 +1,642 @@
+⚠️  Critical: Could not apply torchaudio fix: No module named 'utils.audio'
+   ChatterBox will likely fail with torchcodec errors
+❌ ChatterboxTTS not available: No module named 'perth'
+❌ ChatterboxVC not available: No module named 'perth'
+❌ F5-TTS not available: No module named 'f5_tts'
+🎭 Character voices: Found 9 characters, 10 aliases
+🔧 TorchAudio torchcodec fix applied successfully
+⚠️  ChatterBox Voice Capture: sounddevice not available - No module named 'sounddevice'
+📋 To enable voice recording, install PortAudio:
+   Linux: sudo apt-get install portaudio19-dev
+   macOS: brew install portaudio
+   Windows: Usually bundled with sounddevice
+✅ SRT modules loaded from system package
+❌ F5-TTS not available: No module named 'f5_tts'
+❌ F5-TTS initialization failed: cannot import name 'F5TTS_IMPORT_ERROR' from 'engines.f5tts.f5tts' (F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_ChatterBox_SRT_Voice\engines\f5tts\f5tts.py)
+======================================================================
+🚀 ChatterBox Voice Extension v3.4.3
+Using model source: huggingface
+⚠️ No local models found - will download from Hugging Face
+💡 Tip: First generation will download models (~1GB)
+   Models will be saved locally for future use
+📋 System Dependencies:
+   ⚠️ PortAudio library not found - Voice recording disabled
+      Install with: sudo apt-get install portaudio19-dev (Linux) or brew install portaudio (macOS)
+======================================================================
+🚀 ChatterBox Voice Extension v3.4.3 loaded with 6 nodes:
+   • 🌊 Audio Wave Analyzer
+   • 🎙️ ChatterBox Voice Capture (diogod)
+   • 🎤 ChatterBox Voice TTS (diogod)
+   • 📺 ChatterBox SRT Voice TTS
+   • 🔄 ChatterBox Voice Conversion (diogod)
+   • 🔧 Audio Wave Analyzer Options
+⚠️  Missing optional features: F5-TTS nodes
+   Install missing dependencies to enable all features
+======================================================================
+------------------------------------------
+Comfyroll Studio v1.76 :  175 Nodes Loaded
+------------------------------------------
+** For changes, please see patch notes at https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes/blob/main/Patch_Notes.md
+** For help, please see the wiki at https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes/wiki
+------------------------------------------
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux] | INFO -> Using ckpts path: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux\ckpts
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux] | INFO -> Using symlinks: False
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux] | INFO -> Using ort providers: ['CUDAExecutionProvider', 'DirectMLExecutionProvider', 'OpenVINOExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider', 'CoreMLExecutionProvider']
+DWPose: Onnxruntime with acceleration providers detected
+FizzleDorf Custom Nodes: Loaded
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\nodes.py", line 2156, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle\__init__.py", line 35, in <module>
+    imported_module = importlib.import_module(".py.{}".format(name), __name__)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\importlib\__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle\py\add_grain.py", line 3, in <module>
+    from .imagefunc import log, tensor2pil, image_add_grain, pil2tensor
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle\py\imagefunc.py", line 37, in <module>
+    from .blendmodes import *
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle\py\blendmodes.py", line 10, in <module>
+    from blend_modes import difference, normal, screen, soft_light, lighten_only, dodge, \
+ModuleNotFoundError: No module named 'blend_modes'
+
+Cannot import F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle module for custom nodes: No module named 'blend_modes'
+Flash Attention 2 is not available. Falling back to PyTorch's native attention implementation.
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\nodes.py", line 2156, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_segment_anything\__init__.py", line 1, in <module>
+    from .node import *
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_segment_anything\node.py", line 19, in <module>
+    from local_groundingdino.util.utils import clean_state_dict as local_groundingdino_clean_state_dict
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-SAM2\local_groundingdino\util\utils.py", line 12, in <module>
+    from local_groundingdino.util.slconfig import SLConfig
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-SAM2\local_groundingdino\util\slconfig.py", line 13, in <module>
+    from addict import Dict
+ModuleNotFoundError: No module named 'addict'
+
+Cannot import F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_segment_anything module for custom nodes: No module named 'addict'
+🎬 WAN Modular System loaded - Complete Configuration!
+   ✨ WANLastFrameExtractor: Extract frames for segment continuation
+   🔗 WANSimpleConcatenator: Basic segment concatenation
+   🎯 WANSegmentWrapper: Advanced segment generation wrapper
+   🔄 WANSegmentConcatenator: Intelligent segment assembly
+   🏭 WANSegmentFactory: Complete segment generation in one node
+   🚀 WANQuickSegment: Simplified segment generation for beginners
+   🏭 WANSegmentInjector: Automatic segment generation (built-in preview!)
+   📄 WANTextPreview: Text/JSON preview for workflow output
+   🔍 WANWorkflowAnalyzer: Workflow analysis and recommendations
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfy_mtb] | INFO -> loaded 109 nodes successfuly
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfy_mtb] | INFO -> Some nodes (3) could not be loaded. This can be ignored, but go to http://127.0.0.1:8001/mtb if you want more information.
+[CRT-Nodes __init__] Importing node classes...
+Loading crt-nodes module
+🔍 Found ControlNet Aux modules: ['F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.log', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.utils', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.lvminthin', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.hint_image_enchance', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.anime_face_segment', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.anyline', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.binary', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.canny', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.color', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.densepose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.depth_anything', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.depth_anything_v2', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.diffusion_edge', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.dsine', 'custom_controlnet_aux', 'custom_controlnet_aux.dwpose.model', 'custom_controlnet_aux.dwpose.types', 'custom_controlnet_aux.dwpose.body', 'custom_controlnet_aux.dwpose.util', 'custom_controlnet_aux.dwpose.hand', 'custom_controlnet_aux.dwpose.face', 'custom_controlnet_aux.dwpose.dw_onnx', 'custom_controlnet_aux.dwpose.dw_onnx.cv_ox_det', 'custom_controlnet_aux.dwpose.dw_onnx.cv_ox_yolo_nas', 'custom_controlnet_aux.dwpose.dw_onnx.cv_ox_pose', 'custom_controlnet_aux.dwpose.dw_torchscript', 'custom_controlnet_aux.dwpose.dw_torchscript.jit_det', 'custom_controlnet_aux.dwpose.dw_torchscript.jit_pose', 'custom_controlnet_aux.dwpose.wholebody', 'custom_controlnet_aux.util', 'custom_controlnet_aux.dwpose.animalpose', 'custom_controlnet_aux.dwpose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.dwpose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.hed', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.inpaint', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.leres', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.lineart', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.lineart_anime', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.lineart_standard', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.manga_line', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.mediapipe_face', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.mesh_graphormer', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.metric3d', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.midas', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.mlsd', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.normalbae', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.oneformer', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.openpose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.pidinet', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.model', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.types', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.body', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.util', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.hand', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.face', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_onnx', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_onnx.cv_ox_det', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_onnx.cv_ox_yolo_nas', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_onnx.cv_ox_pose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_torchscript', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_torchscript.jit_det', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.dw_torchscript.jit_pose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.wholebody', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose.animalpose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.src.custom_controlnet_aux.dwpose', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.pose_keypoint_postprocess', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.recolor', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.scribble', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.segment_anything', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.shuffle', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.teed', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.tile', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.uniformer', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.unimatch', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.zoe', 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui_controlnet_aux.node_wrappers.__pycache__']
+   But couldn't import AUX_NODE_MAPPINGS - checking alternative paths...
+✅ ControlNet Aux loaded from existing module 'F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux' with 46 preprocessors
+[CRT-Nodes __init__] Registering custom model paths...
+[CRT-Nodes __init__] INITIALIZATION COMPLETE.
+Efficiency Nodes: Attempting to add Control Net options to the 'HiRes-Fix Script' Node (comfyui_controlnet_aux add-on)...Success!
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\nodes.py", line 2156, in load_custom_node
+    module_spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 999, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf\__init__.py", line 8, in <module>
+    from custom_nodes.facerestore_cf.facelib.utils.face_restoration_helper import FaceRestoreHelper
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf\__init__.py", line 14, in <module>
+    from custom_nodes.facerestore_cf.basicsr.utils.registry import ARCH_REGISTRY
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf\basicsr\__init__.py", line 5, in <module>
+    from .losses import *
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf\basicsr\losses\__init__.py", line 5, in <module>
+    from .losses import (CharbonnierLoss, GANLoss, L1Loss, MSELoss, PerceptualLoss, WeightedTVLoss, g_path_regularize,
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf\basicsr\losses\losses.py", line 2, in <module>
+    import lpips
+ModuleNotFoundError: No module named 'lpips'
+
+Cannot import F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf module for custom nodes: No module named 'lpips'
+======================================== ComfyUI-nunchaku Initialization ========================================
+Nunchaku version: 0.3.2.dev20250809
+ComfyUI-nunchaku version: 1.0.0
+ComfyUI-nunchaku 1.0.0 is not compatible with nunchaku 0.3.2.dev20250809. Please update nunchaku to a supported version in ['v1.0.0'].v1.0.0 currently is a nightly version. You can find the wheels at https://github.com/nunchaku-tech/nunchaku/releases/.
+Node `NunchakuFluxDiTLoader` import failed:
+Traceback (most recent call last):
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\__init__.py", line 32, in <module>
+    from .nodes.models.flux import NunchakuFluxDiTLoader
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\nodes\models\flux.py", line 22, in <module>
+    from ...wrappers.flux import ComfyFluxWrapper
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\wrappers\flux.py", line 15, in <module>
+    from nunchaku.caching.fbcache import cache_context, create_cache_context
+ModuleNotFoundError: No module named 'nunchaku.caching.fbcache'
+Node `NunchakuQwenImageDiTLoader` import failed:
+Traceback (most recent call last):
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\__init__.py", line 39, in <module>
+    from .nodes.models.qwenimage import NunchakuQwenImageDiTLoader
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\nodes\models\qwenimage.py", line 15, in <module>
+    from nunchaku.utils import check_hardware_compatibility, get_gpu_memory, get_precision_from_quantization_config
+ImportError: cannot import name 'get_precision_from_quantization_config' from 'nunchaku.utils' (C:\comfyui\.venv\Lib\site-packages\nunchaku\utils.py)
+Nodes `NunchakuFluxLoraLoader` and `NunchakuFluxLoraStack` import failed:
+Traceback (most recent call last):
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\__init__.py", line 46, in <module>
+    from .nodes.lora.flux import NunchakuFluxLoraLoader, NunchakuFluxLoraStack
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\nodes\lora\flux.py", line 14, in <module>
+    from ...wrappers.flux import ComfyFluxWrapper
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\wrappers\flux.py", line 15, in <module>
+    from nunchaku.caching.fbcache import cache_context, create_cache_context
+ModuleNotFoundError: No module named 'nunchaku.caching.fbcache'
+Nodes `NunchakuPulidApply`,`NunchakuPulidLoader`, `NunchakuPuLIDLoaderV2` and `NunchakuFluxPuLIDApplyV2` import failed:
+Traceback (most recent call last):
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\__init__.py", line 77, in <module>
+    from .nodes.models.pulid import (
+  File "F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes\nodes\models\pulid.py", line 132
+    all_embeddings.append(id_embedding)
+IndentationError: unexpected indent
+=================================================================================================================
+Using pytorch attention
+(RES4LYF) Init
+(RES4LYF) Importing beta samplers.
+(RES4LYF) Importing legacy samplers.
+
+[rgthree-comfy] Loaded 49 magnificent nodes. 🎉
+
+Video workflow loader endpoint registered at /extract_video_metadata and /api/extract_video_metadata
+WAS Node Suite: BlenderNeko's Advanced CLIP Text Encode found, attempting to enable `CLIPTextEncode` support.
+WAS Node Suite: `CLIPTextEncode (BlenderNeko Advanced + NSP)` node enabled under `WAS Suite/Conditioning` menu.
+WAS Node Suite: OpenCV Python FFMPEG support is enabled
+WAS Node Suite Warning: `ffmpeg_bin_path` is not set in `F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\was-node-suite-comfyui\was_suite_config.json` config file. Will attempt to use system ffmpeg binaries if available.
+WAS Node Suite: Finished. Loaded 221 nodes successfully.
+
+        "Art is the soul made visible." - George Crook
+
+File API: aiohttp routes registered
+ND Super Nodes: API routes registered
+ND Super Nodes: Module loaded successfully
+ND Super Nodes: Web API routes registered
+Blocked by policy: C:\Users\nooro\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\custom_nodes\ComfyUI-Manager
+
+Import times for custom nodes:
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\demo_example_node.py
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\i2v_template_manager.py
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\websocket_image_save.py
+   0.0 seconds: C:\Users\nooro\AppData\Local\Programs\@comfyorgcomfyui-electron\resources\ComfyUI\custom_nodes\websocket_image_save.py
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\i2v_template_api.py
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\channels_last_hotfix
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\vram_pipeline_tools
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-WanMoeKSampler
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-prompter-node
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\video_workflow_loader_web
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\flux_optimization_nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\i2v_template_manager
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_ICCustom.py
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_ADV_CLIP_emb
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_EasyKitHT_NodeAlignPro
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Image-Selector
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\masquerade-nodes-comfyui
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-MakeFrame
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\tiledvaelite
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-wanBlockswap
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mxtoolkit
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_JPS-Nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Jjk-Nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\cg-use-everywhere
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-ltxvideolora
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-WD14-Tagger
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Documents
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-GGUF
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_IPAdapter_plus
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-YoloWorld-EfficientSAM
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-SuperUltimateVaceTools
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-MagCache
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-animatediff
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-various
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_wan_modular
+   0.0 seconds: C:\comfyui\custom_nodes\nd-super-nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_FizzNodes
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-tensorops
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Crystools
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Chibi-Nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_essentials
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Custom-Scripts
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-reactor-node
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_UltimateSDUpscale
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Frame-Interpolation
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-RamTorch
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_segment_anything
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-dream-video-batches
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-SAM2
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Copilot
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Advanced-ControlNet
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-KJNodes
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\audio-separation-nodes-comfyui
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\x-flux-comfyui
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-ltxvideo-registry-mattabyte
+   0.0 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_LayerStyle
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\rgthree-comfy
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-segment-anything-2
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-AnimateDiff-Evolved
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui_controlnet_aux
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\efficiency-nodes-comfyui
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\CRT-Nodes
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_RH_ICCustom
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-WanVideoWrapper
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfy_mtb
+   0.0 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_ChatterBox_SRT_Voice
+   0.1 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_DICE_Talk
+   0.1 seconds (IMPORT FAILED): F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\facerestore_cf
+   0.1 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-VideoHelperSuite
+   0.1 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Impact-Pack
+   0.1 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI_Comfyroll_CustomNodes
+   0.3 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\RES4LYF
+   0.8 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\was-node-suite-comfyui
+   1.9 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes
+   2.8 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\ComfyUI-Easy-Use
+   3.4 seconds: F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\nunchaku_nodes
+
+Context impl SQLiteImpl.
+Will assume non-transactional DDL.
+Assets scan(roots=['models']) completed in 0.025s (created=0, skipped_existing=183, total_seen=184)
+Using LRU cache
+Starting server
+
+To see the GUI go to: http://127.0.0.1:8001
+comfyui-frontend-package not found in requirements.txt
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /scripts/ui.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /scripts/ui/imagePreview.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /extensions/core/clipspace.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/photoswipe-lightbox.esm.min.js
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /extensions/core/groupNode.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /extensions/core/widgetInputs.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /scripts/ui/components/buttonGroup.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /scripts/ui/components/button.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+[DEPRECATION WARNING] Detected import of deprecated legacy API: /scripts/ui/components/popup.js. This is likely caused by a custom node extension using outdated APIs. Please update your extensions or contact the extension author for an updated version.
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/pickr.min.js
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/photoswipe.min.css
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/classic.min.css
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/model-viewer.min.js
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/juxtapose.min.js
+F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\webApp\lib/juxtapose.css
+[F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfy_mtb] | INFO -> Found multiple match, we will pick the last F:\ComfyUI_windows_portable\ComfyUI\models\upscale_models
+['C:\\comfyui\\models\\upscale_models', 'F:\\ComfyUI_windows_portable\\ComfyUI\\models\\upscale_models']
+[]
+[]
+data_path:  F:\ComfyUI_windows_portable\ComfyUI\custom_nodes\comfyui-mixlab-nodes\data
+[ComfyUI-Manager] The ComfyRegistry cache update is still in progress, so an outdated cache is being used.
+FETCH DATA from: C:\comfyui\.venv\Lib\site-packages\comfyui_manager\custom-node-list.json [DONE]
+FETCH ComfyRegistry Data [DONE]
+[ComfyUI-Manager] default cache updated: https://api.comfy.org/nodes
+FETCH DATA from: C:\comfyui\user\__manager\cache\1514988643_custom-node-list.json [DONE]
+[ComfyUI-Manager] All startup tasks have been completed.
+[ComfyUI-Manager] The ComfyRegistry cache update is still in progress, so an outdated cache is being used.
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Copilot' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-Copilot@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Copilot\\.git\\objects\\pack\\pack-dc97edbfcd4d20d95d29c3ab9758e6fe25b02d35.idx'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Crystools' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-Crystools@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Crystools\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Documents' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-Documents@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Documents\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-MakeFrame' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-MakeFrame@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-MakeFrame\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-YoloWorld-EfficientSAM' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-YoloWorld-EfficientSAM@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-YoloWorld-EfficientSAM\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_ADV_CLIP_emb' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI_ADV_CLIP_emb@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_ADV_CLIP_emb\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_Comfyroll_CustomNodes' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI_Comfyroll_CustomNodes@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_Comfyroll_CustomNodes\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_JPS-Nodes' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI_JPS-Nodes@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI_JPS-Nodes\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\cg-use-everywhere' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\cg-use-everywhere@7_0_1'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 639, in _rmtree_unsafe
+    onexc(os.rmdir, path, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 637, in _rmtree_unsafe
+    os.rmdir(path)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\cg-use-everywhere'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Advanced-ControlNet' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\comfyui-advanced-controlnet@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Advanced-ControlNet\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-AnimateDiff-Evolved' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\comfyui-animatediff-evolved@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-AnimateDiff-Evolved\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-animatediff' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\comfyui-animatediff@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-animatediff\\.git\\hooks\\applypatch-msg.sample'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Copilot' -> 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\.disabled\\ComfyUI-Copilot@nightly\\ComfyUI-Copilot'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 1030, in do_disable
+    res = core.unified_manager.unified_disable(node_name, params.is_unknown)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'F:\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\ComfyUI-Copilot\\.git\\objects\\pack\\pack-dc97edbfcd4d20d95d29c3ab9758e6fe25b02d35.idx'
+Installation reserved: cg-use-everywhere
+Updating: cg-use-everywhereTraceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 886, in do_update
+    res = core.unified_manager.unified_update(node_name, node_ver)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1381, in unified_update
+    return self.cnr_switch_version(node_id, instant_execution=instant_execution, no_deps=no_deps, return_postinstall=return_postinstall).with_ver('cnr')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 902, in cnr_switch_version
+    return self.cnr_switch_version_lazy(node_id, version_spec, no_deps, return_postinstall)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 917, in cnr_switch_version_lazy
+    if self.active_nodes[node_id][0] == version_spec:
+       ~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 321, in __getitem__
+    original_key = self._key_map[norm_key]
+                   ~~~~~~~~~~~~~^^^^^^^^^^
+KeyError: 'cg-use-everywhere'
+Traceback (most recent call last):
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 847, in move
+    os.rename(src, real_dst)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\comfyui\\custom_nodes\\nd-super-nodes' -> 'C:\\comfyui\\custom_nodes\\.disabled\\nd-super-nodes@nightly'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_server.py", line 844, in do_install
+    res = await core.unified_manager.install_by_id(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1455, in install_by_id
+    self.unified_disable(node_id, False)  # NOTE: don't return from here
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\comfyui\.venv\Lib\site-packages\comfyui_manager\glob\manager_core.py", line 1130, in unified_disable
+    shutil.move(ver_and_path[1], to_path)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 865, in move
+    rmtree(src)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\nooro\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'C:\\comfyui\\custom_nodes\\nd-super-nodes\\.git\\objects\\01\\109c7b4aa4666b2f4373f3adf3dab40aba0b7e'

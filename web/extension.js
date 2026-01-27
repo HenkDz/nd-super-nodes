@@ -3709,12 +3709,17 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Set up the node type with custom widgets
    */
   static setup(nodeType, _nodeData) {
+    console.log("[ND Super Nodes] setup() called, nodeType:", nodeType?.name || nodeType?.type || "unknown");
     const originalNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function() {
+      console.log("[ND Super Nodes] onNodeCreated() called for node:", this.id, this.type);
       if (originalNodeCreated) {
         originalNodeCreated.apply(this, arguments);
       }
+      console.log("[ND Super Nodes] Calling setupAdvancedNode...");
       _SuperLoraNode.setupAdvancedNode(this);
+      console.log("[ND Super Nodes] setupAdvancedNode complete, customWidgets:", this.customWidgets?.length || 0);
+      console.log("[ND Super Nodes] Hiding lora_bundle widget, current widgets:", this.widgets?.map((w) => w?.name));
       _SuperLoraNode.hideLoraBundleWidget(this);
       const nodeRef = this;
       setTimeout(() => _SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
@@ -3944,11 +3949,11 @@ const _SuperLoraNode = class _SuperLoraNode {
       node.size[1] = newHeight;
     }
   }
-  /**
-   * Custom drawing for all widgets
-   * Performance optimized with viewport culling (Issue #9)
-   */
   static drawCustomWidgets(node, ctx) {
+    if (!this._drawDebugLogged) {
+      console.log("[ND Super Nodes] drawCustomWidgets called, node.customWidgets:", node.customWidgets?.length || 0);
+      this._drawDebugLogged = true;
+    }
     if (!node.customWidgets) return;
     const isBypassed = _SuperLoraNode.isNodeBypassed(node);
     const marginDefault = _SuperLoraNode.MARGIN_SMALL;
@@ -5012,6 +5017,7 @@ _SuperLoraNode.loraService = LoraService.getInstance();
 _SuperLoraNode.templateService = TemplateService.getInstance();
 _SuperLoraNode.initialized = false;
 _SuperLoraNode.initializationPromise = null;
+_SuperLoraNode._drawDebugLogged = false;
 let SuperLoraNode = _SuperLoraNode;
 const GGUF_CLIP_WIDGET_MAP = {
   DualCLIPLoaderGGUF: ["clip_name1", "clip_name2"],
@@ -6600,6 +6606,18 @@ const nodeEnhancerExtension = {
 console.log(`${EXTENSION_NAME$1}: Registering extension with ComfyUI`);
 app$1.registerExtension(nodeEnhancerExtension);
 console.log(`${EXTENSION_NAME$1}: Extension registered successfully`);
+console.log("[ND Super Nodes] Extension script loading...");
+if (typeof document !== "undefined") {
+  const debugMarker = document.createElement("div");
+  debugMarker.id = "nd-super-nodes-debug";
+  debugMarker.style.cssText = "position:fixed;top:5px;right:5px;background:lime;color:black;padding:4px 8px;z-index:999999;font-size:11px;border-radius:3px;";
+  debugMarker.textContent = "ND Super Nodes JS Loaded";
+  setTimeout(() => {
+    document.body?.appendChild(debugMarker);
+    setTimeout(() => debugMarker.remove(), 5e3);
+  }, 1e3);
+}
+console.log("[ND Super Nodes] All imports successful, app =", typeof app$1);
 const EXTENSION_NAME = "SuperLoraLoader";
 const NODE_TYPE = "NdSuperLoraLoader";
 let currentRenderingMode = "canvas";
@@ -6686,21 +6704,24 @@ const superLoraExtension = {
    * Called before a node type is registered
    */
   beforeRegisterNodeDef(nodeType, nodeData) {
+    console.log(`[ND Super Nodes] beforeRegisterNodeDef: "${nodeData?.name}" (looking for "${NODE_TYPE}")`);
     if (currentRenderingMode === "canvas" && !nodes2Capabilities) {
       initRenderingModeDetection();
     }
     if (nodeData.name === NODE_TYPE) {
-      console.log(`Super LoRA Loader: Registering node type (mode: ${currentRenderingMode})`);
+      console.log(`[ND Super Nodes] *** MATCHED our node: ${NODE_TYPE} ***`);
+      console.log(`[ND Super Nodes] Registering node type (mode: ${currentRenderingMode})`);
       SuperLoraNode.initialize().then(() => {
-        console.log("Super LoRA Loader: Services initialized");
+        console.log("[ND Super Nodes] Services initialized");
       }).catch((err) => {
-        console.error("Super LoRA Loader: Initialization error", err);
+        console.error("[ND Super Nodes] Initialization error", err);
       });
       try {
+        console.log("[ND Super Nodes] Calling SuperLoraNode.setup()...");
         SuperLoraNode.setup(nodeType, nodeData);
-        console.log("Super LoRA Loader: Node type registered successfully");
+        console.log("[ND Super Nodes] Node type registered successfully");
       } catch (err) {
-        console.error("Super LoRA Loader: Error during node setup; continuing with default registration", err);
+        console.error("[ND Super Nodes] Error during node setup:", err);
       }
     }
   },
@@ -6749,9 +6770,15 @@ const superLoraExtension = {
     };
   }
 };
-console.log("Super LoRA Loader: Registering extension with ComfyUI");
-app$1.registerExtension(superLoraExtension);
-console.log("Super LoRA Loader: Extension registered successfully");
+console.log("[ND Super Nodes] Registering extension with ComfyUI...");
+console.log("[ND Super Nodes] Extension has beforeRegisterNodeDef:", typeof superLoraExtension.beforeRegisterNodeDef);
+console.log("[ND Super Nodes] Extension name:", superLoraExtension.name);
+try {
+  app$1.registerExtension(superLoraExtension);
+  console.log("[ND Super Nodes] Extension registered successfully!");
+} catch (err) {
+  console.error("[ND Super Nodes] Failed to register extension:", err);
+}
 try {
   window.SuperLoraNode = SuperLoraNode;
 } catch {
