@@ -132,13 +132,12 @@ export class SuperLoraNode {
       }
       
       SuperLoraNode.setupAdvancedNode(this);
-      // Purge any legacy execution widgets (ensure nothing visible remains)
-      try {
-        this.widgets = (this.widgets || []).filter((w: any) => {
-          const nm = w?.name || "";
-          return !(nm === 'lora_bundle' || nm.startsWith('lora_'));
-        });
-      } catch {}
+      // Hide the lora_bundle widget created by ComfyUI from backend STRING input
+      // Call both immediately and after a delay (widgets may be added asynchronously)
+      SuperLoraNode.hideLoraBundleWidget(this);
+      const nodeRef = this;
+      setTimeout(() => SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
+      setTimeout(() => SuperLoraNode.hideLoraBundleWidget(nodeRef), 100);
       
       // In Nodes 2.0 mode, mount Vue component
       if (isNodes2Enabled()) {
@@ -257,13 +256,10 @@ export class SuperLoraNode {
         // Ensure we have at least a header widget
         SuperLoraNode.setupAdvancedNode(this);
       }
-      // Purge any legacy execution widgets except the lora_bundle bridge
-      try {
-        this.widgets = (this.widgets || []).filter((w: any) => {
-          const nm = w?.name || "";
-          return !(nm.startsWith('lora_') && nm !== 'lora_bundle');
-        });
-      } catch {}
+      // Hide the lora_bundle widget (it exists for serialization but shouldn't be visible)
+      SuperLoraNode.hideLoraBundleWidget(this);
+      const nodeRef = this;
+      setTimeout(() => SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
       // Sync invisible widgets after configuring
       SuperLoraNode.syncExecutionWidgets(this);
     };
@@ -320,6 +316,35 @@ export class SuperLoraNode {
         return safe;
       }
     };
+  }
+
+  /**
+   * Hide the lora_bundle widget that ComfyUI creates from backend STRING input.
+   * We use this widget for data serialization but don't want it visible.
+   */
+  private static hideLoraBundleWidget(node: any): void {
+    try {
+      const widgets = node.widgets || [];
+      for (const w of widgets) {
+        if (w?.name === 'lora_bundle') {
+          // Make widget invisible but keep it for serialization
+          w.type = 'converted-widget';  // ComfyUI won't render 'converted-widget' type
+          w.hidden = true;
+          w.draw = () => {};
+          w.computeSize = () => [0, -4];  // Negative to collapse space
+          w.serializeValue = () => SuperLoraNode.buildBundle(node);
+          console.log('Super LoRA Loader: Hidden lora_bundle widget');
+        }
+        // Also hide any other lora_* prefixed widgets (legacy)
+        else if (w?.name?.startsWith?.('lora_')) {
+          w.hidden = true;
+          w.draw = () => {};
+          w.computeSize = () => [0, -4];
+        }
+      }
+    } catch (e) {
+      console.warn('Super LoRA Loader: Error hiding lora_bundle widget:', e);
+    }
   }
 
   /**
@@ -1480,7 +1505,7 @@ export class SuperLoraNode {
    * Build Vue props from node state.
    */
   private static buildVueProps(node: any): Record<string, any> {
-    const customWidgets = node._superLoraWidgets || [];
+    const customWidgets = node.customWidgets || [];
     const tagsEnabled = app?.ui?.settings?.getSettingValue?.('superLora.enableTags', false) ?? false;
     const showSeparateStrengths = app?.ui?.settings?.getSettingValue?.('superLora.showSeparateStrengths', false) ?? false;
     
@@ -1515,7 +1540,7 @@ export class SuperLoraNode {
           clipStrength: loraValue.clipStrength ?? loraValue.strength ?? 1.0,
           tag: tagName,
           triggerWords: loraValue.triggerWords || [],
-          isLoading: widget._isLoading || false,
+          isLoading: (widget as any)._isLoading || false,
         });
         
         if (tagName) {
@@ -1595,7 +1620,7 @@ export class SuperLoraNode {
       onReorderLora: (fromIndex: number, toIndex: number) => {
         const loraWidgets = customWidgets.filter((w: any) => w instanceof SuperLoraWidget);
         if (loraWidgets[fromIndex] && loraWidgets[toIndex]) {
-          // Reorder in the _superLoraWidgets array
+          // Reorder in the customWidgets array
           const fromWidget = loraWidgets[fromIndex];
           const toWidget = loraWidgets[toIndex];
           const fromIdx = customWidgets.indexOf(fromWidget);

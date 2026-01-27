@@ -3715,13 +3715,10 @@ const _SuperLoraNode = class _SuperLoraNode {
         originalNodeCreated.apply(this, arguments);
       }
       _SuperLoraNode.setupAdvancedNode(this);
-      try {
-        this.widgets = (this.widgets || []).filter((w) => {
-          const nm = w?.name || "";
-          return !(nm === "lora_bundle" || nm.startsWith("lora_"));
-        });
-      } catch {
-      }
+      _SuperLoraNode.hideLoraBundleWidget(this);
+      const nodeRef = this;
+      setTimeout(() => _SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
+      setTimeout(() => _SuperLoraNode.hideLoraBundleWidget(nodeRef), 100);
       if (isNodes2Enabled()) {
         _SuperLoraNode.mountVueView(this);
       }
@@ -3813,13 +3810,9 @@ const _SuperLoraNode = class _SuperLoraNode {
       } else {
         _SuperLoraNode.setupAdvancedNode(this);
       }
-      try {
-        this.widgets = (this.widgets || []).filter((w) => {
-          const nm = w?.name || "";
-          return !(nm.startsWith("lora_") && nm !== "lora_bundle");
-        });
-      } catch {
-      }
+      _SuperLoraNode.hideLoraBundleWidget(this);
+      const nodeRef = this;
+      setTimeout(() => _SuperLoraNode.hideLoraBundleWidget(nodeRef), 0);
       _SuperLoraNode.syncExecutionWidgets(this);
     };
     const originalGetExtraMenuOptions = nodeType.prototype.getExtraMenuOptions;
@@ -3868,6 +3861,33 @@ const _SuperLoraNode = class _SuperLoraNode {
         return safe;
       }
     };
+  }
+  /**
+   * Hide the lora_bundle widget that ComfyUI creates from backend STRING input.
+   * We use this widget for data serialization but don't want it visible.
+   */
+  static hideLoraBundleWidget(node) {
+    try {
+      const widgets = node.widgets || [];
+      for (const w of widgets) {
+        if (w?.name === "lora_bundle") {
+          w.type = "converted-widget";
+          w.hidden = true;
+          w.draw = () => {
+          };
+          w.computeSize = () => [0, -4];
+          w.serializeValue = () => _SuperLoraNode.buildBundle(node);
+          console.log("Super LoRA Loader: Hidden lora_bundle widget");
+        } else if (w?.name?.startsWith?.("lora_")) {
+          w.hidden = true;
+          w.draw = () => {
+          };
+          w.computeSize = () => [0, -4];
+        }
+      }
+    } catch (e) {
+      console.warn("Super LoRA Loader: Error hiding lora_bundle widget:", e);
+    }
   }
   /**
    * Initialize advanced node with custom widgets
@@ -4876,7 +4896,7 @@ const _SuperLoraNode = class _SuperLoraNode {
    * Build Vue props from node state.
    */
   static buildVueProps(node) {
-    const customWidgets = node._superLoraWidgets || [];
+    const customWidgets = node.customWidgets || [];
     const tagsEnabled = app?.ui?.settings?.getSettingValue?.("superLora.enableTags", false) ?? false;
     const showSeparateStrengths = app?.ui?.settings?.getSettingValue?.("superLora.showSeparateStrengths", false) ?? false;
     const loras = [];
